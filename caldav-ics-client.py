@@ -3,17 +3,18 @@
 #
 # caldav-ics-client
 # receives event details from arguments, parse them, create an ICS event, upload it via webdav PUT request
-# must provide User-Agent, webdav server url, authentication
-# based on a NextCloud test environment
+# must provide JSON formatted: User-Agent, webdav server url, authentication
+# based on a NextCloud environment
 #
-# v0.2 - 2022.10.25 - https://github.com/ynad/caldav-py-handler
+# v0.3 - 2022.11.04 - https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
 import sys, os
 import logging
 import json
-import pytz
+#import pytz
+import click
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -33,12 +34,11 @@ logger = logging.getLogger(__name__)
 
 
 # global settings
-user_agent='caldav-ics-client'
-ics_file='test_caldav.ics'
-event_ics='test-caldav-event.ics'
-
+user_agent="caldav-ics-client"
+ics_file="tmp-event.ics"
+domain="cloud.domain.com"
 # user settings
-user_conf_json='user_settings.json'
+user_conf_json="user_settings.json"
 
 
 # load user settings from file
@@ -49,12 +49,12 @@ def load_user_settings(user_conf_json):
 
 
 # create ICS file with provided event details
-def create_ics(event_details):
+def create_ics(user_settings, event_details):
 
     # init calendar
     cal = Calendar()
     # set properties to be compliant
-    cal.add('prodid', '-//CalDav ICS Client//cloud.domain.com//github.com/ynad/caldav-py-handler//')
+    cal.add('prodid', f'-//CalDav ICS Client//{domain}//github.com/ynad/caldav-py-handler//')
     cal.add('version', '2.0')
 
     # add calendar subcomponents
@@ -62,26 +62,28 @@ def create_ics(event_details):
     #event.add('name', event_details['name'])
     event.add('summary', event_details['name'])
     event.add('description', event_details['description'])
-    event.add('dtstart', datetime(2022, 10, 25, 8, 0, 0, tzinfo=pytz.utc))
-    event.add('dtend', datetime(2022, 10, 25, 10, 0, 0, tzinfo=pytz.utc))
+    event.add('dtstart', event_details['start'])
+    event.add('dtend', event_details['end'])
 
     # add organizer
-    organizer = vCalAddress('MAILTO:info@danielevercelli.it')
-
-    # add event parameters
-    organizer.params['name'] = vText('Foo Bar')
-    organizer.params['role'] = vText('CEO')
+    organizer = vCalAddress(user_settings['organizer_email'])
+    organizer.params['name'] = vText(user_settings['organizer_name'])
+    organizer.params['role'] = vText(user_settings['organizer_role'])
     event['organizer'] = organizer
-    event['location'] = vText('Roma, IT')
 
-    event['uid'] = '2022125T111010/272356262376@example.com'
+    # add location
+    event['location'] = vText(event_details['location'])
+    # uid - unique event ID
+    event['uid'] = event_details['uid']
     event.add('priority', 5)
 
-    # add attendees - to-do list of attendees
-    attendee = vCalAddress('MAILTO:info@danielevercelli.it')
-    attendee.params['name'] = vText('Micky Mouse')
-    attendee.params['role'] = vText('REQ-PARTICIPANT')
-    event.add('attendee', attendee, encode=0)
+    # add invites if present
+    if 'invite' in event_details:
+        # add attendees - to-do list of attendees
+        attendee = vCalAddress(event_details['invite'])
+        attendee.params['name'] = vText(event_details['invite'])
+        attendee.params['role'] = vText('REQ-PARTICIPANT')
+        event.add('attendee', attendee, encode=0)
 
     # add event to the calendar
     cal.add_component(event)
@@ -146,16 +148,73 @@ def webdav_put_ics(user_settings, calendar, event_ics):
         # rm tmp ics files
         if os.path.exists(ics_file):
             os.remove(ics_file)
+        #pass
 
+
+
+@click.command()
+@click.option(
+    "--name",
+    type=str,
+    default="default event title"
+)
+@click.option(
+    "--descr",
+    type=str,
+    default="default event description"
+)
+@click.option(
+    "--start_day",
+    type=str,
+    default=""
+)
+@click.option(
+    "--start_hr",
+    type=str,
+    default=""
+)
+@click.option(
+    "--end_day",
+    type=str,
+    default=""
+)
+@click.option(
+    "--end_hr",
+    type=str,
+    default=""
+)
+@click.option(
+    "--loc",
+    type=str,
+    default="Main Office"
+)
+@click.option(
+    "--cal",
+    type=str,
+    default="personal"
+)
+@click.option(
+    "--invite",
+    type=str,
+    default=""
+)
 
 ## Main
-def main():
+def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
     # check command line arguments
-    if len(sys.argv) < 5:
+    if not start_day or not end_day:
         err = (
-            f"Missing arguments!\n"
-            + f"Syntax:\n{sys.argv} \"event name\" \"event description\" \"event start time\" \"event end time\" \"calendar name\""
+            f"Missing arguments! Syntax:\n{sys.argv}\n"
+            + "    --name \"event name\"\n"
+            + "    --descr \"event description\"\n"
+            + "    --start_day \"event start day\"\n"
+            + "    --end_day \"event end day\"\n"
+            + "   [--start_hr \"event start hour\"]\n"
+            + "   [--end_hr \"event end hour\"]\n"
+            + "   [--loc \"event location\"]\n"
+            + "   [--cal \"calendar to be used\"]\n"
+            + "   [--invitee \"email to be invited\"]\n"
         )
         print(err)
         logger.error(err)
@@ -164,22 +223,31 @@ def main():
     # load user settings from json file
     user_settings = load_user_settings(user_conf_json)
 
-    # acquire event settings from args
-    if len(sys.argv) == 6:
-       calendar = sys.argv[5]
-    else:
-        calendar = None
+    # build event details
     event_details = {
-        'name' : sys.argv[1],
-        'description' : sys.argv[2],
-        'start' : sys.argv[3],
-        'end' : sys.argv[4],
-        'calendar' : calendar
+        'name' : name,
+        'description' : descr,
+        'calendar' : cal if cal else None,
+        'location' : loc,
+        'uid' : (f"{str(datetime.now().timestamp())}_{name}@{domain}").replace(" ", "-")
     }
+    # event with fixed hours
+    if start_hr and end_hr:
+        event_details.update({'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S")})
+        event_details.update({'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S")})
+    # full day event
+    else:
+        event_details.update({'start' : datetime.strptime(f"{start_day} 00:00:00", "%d/%m/%Y %H:%M:%S")})
+        event_details.update({'end' : datetime.strptime(f"{end_day} 23:59:59", "%d/%m/%Y %H:%M:%S")})
+    # add invitees - to-do list of invitations
+    if invite:
+        event_details.update({'invite' : invite})
 
-    create_ics(event_details)
+    #print(event_details['uid'])
 
-    webdav_put_ics(user_settings, event_details['calendar'], event_ics)
+    create_ics(user_settings, event_details)
+
+    webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
 
 
 if __name__ == '__main__':
