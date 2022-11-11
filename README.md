@@ -4,7 +4,7 @@ A small webdav-caldav client to handle caldav sync from command line.
 Aimed to be used as interface for other appliances willing to link with a caldav reality.
 
 ## User settings
-User settings data must be formatted in JSON as follow:
+User settings data must be formatted in JSON as follow, by default the app searches for it in file `user_settings.json`:
 ```
 {
     "server" : "https://cloud.domain.com/remote.php/dav/calendars",
@@ -17,6 +17,7 @@ User settings data must be formatted in JSON as follow:
 }
 ```
 `USER SETTINGS` section might need to be adjusted in the code aswell.
+Logging level defaults to DEBUG, to log file `debug.log`.
 
 ## Syntax
 Mind the required quotes for each string argument.
@@ -29,10 +30,10 @@ Missing arguments! Syntax:
 caldav-ics-client.py
     --name "event name"
     --descr "event description"
-    --start_day "01/06/2022"
-    --end_day "03/06/2022"
-   [--start_hr "10:30:00"]
-   [--end_hr "18:45:30"]
+    --start_day 01/06/2022
+    --end_day 03/06/2022
+   [--start_hr 10:30:00]
+   [--end_hr 18:45:30]
    [--loc "event location"]
    [--cal "calendar to be used"]
    [--invitee "email to be invited"]
