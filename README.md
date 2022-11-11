@@ -1,5 +1,5 @@
 # caldav-py-handler
-A small webdav-caldav client to handle caldav sync from command line. 
+A small webdav-caldav client to handle caldav sync from command line.
 
 Aimed to be used as interface for other appliances willing to link with a caldav reality.
 
@@ -7,7 +7,7 @@ Aimed to be used as interface for other appliances willing to link with a caldav
 User settings data must be formatted in JSON as follow:
 ```
 {
-    "server" : "https://cloud.domain.come/remote.php/dav/calendars",
+    "server" : "https://cloud.domain.com/remote.php/dav/calendars",
     "username": "jane.doe",
     "password": "secret-app-password",
     "calendar_default" : "personal",
@@ -16,12 +16,13 @@ User settings data must be formatted in JSON as follow:
     "organizer_email" : "info@example.com"
 }
 ```
+`USER SETTINGS` section might need to be adjusted in the code aswell.
 
 ## Syntax
 Mind the required quotes for each string argument.
 
 Optional arguments are enclosed by [n]; if missing, field is ignored or default values are used.
-``` 
+```
 python caldav-ics-client.py
 
 Missing arguments! Syntax:
