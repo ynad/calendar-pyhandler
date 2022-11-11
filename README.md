@@ -7,6 +7,7 @@ Aimed to be used as interface for other appliances willing to link with a caldav
 User settings data must be formatted in JSON as follow, by default the app searches for it in file `user_settings.json`:
 ```
 {
+    "domain" : "cloud.domain.com",
     "server" : "https://cloud.domain.com/remote.php/dav/calendars",
     "username": "jane.doe",
     "password": "secret-app-password",
@@ -16,7 +17,7 @@ User settings data must be formatted in JSON as follow, by default the app searc
     "organizer_email" : "info@example.com"
 }
 ```
-`USER SETTINGS` section might need to be adjusted in the code aswell.
+`USER SETTINGS` section in the code might need to be adjusted to your working path.
 Logging level defaults to DEBUG, to log file `debug.log`.
 
 ## Syntax

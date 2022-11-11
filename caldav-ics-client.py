@@ -24,7 +24,6 @@ from pathlib import Path
 
 ###################################################################################################
 # USER SETTINGS - adjust to your environment
-domain="cloud.domain.com"
 user_conf_json="user_settings.json"
 logging_file="debug.log"
 prompt_wait=True
@@ -48,9 +47,9 @@ logger = logging.getLogger(__name__)
 
 
 # show command syntax
-def show_syntax() -> str:
+def show_syntax(user_settings) -> str:
     err = (
-        f"\nCaldav ICS CLIent - {domain}\n"
+        f"\nCaldav ICS CLIent - {user_settings['domain']}\n"
         "=======================================\n\n"
         f"Missing or wrong arguments! Syntax:\n{sys.argv}\n"
         "    --name \"event name\"\n"
@@ -97,8 +96,8 @@ def create_ics(user_settings, event_details) -> None:
     # init calendar
     cal = Calendar()
     # set properties to be compliant
-    cal.add('prodid', f'-//CalDav ICS Client//{domain}//github.com/ynad/caldav-py-handler//')
-    cal.add('version', '2.0')
+    cal.add("prodid", f"-//CalDav ICS Client//{user_settings['domain']}//github.com/ynad/caldav-py-handler//")
+    cal.add("version", "2.0")
 
     # add calendar subcomponents
     event = Event()
@@ -245,9 +244,12 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
 ## Main
 def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
+    # load user settings from json file
+    user_settings = load_user_settings(user_conf_json)
+
     # check command line arguments
     if not start_day or not end_day:
-        err = show_syntax()
+        err = show_syntax(user_settings)
         #logger.error(err)
         print(err)
         input("Press any key to exit.")
@@ -256,7 +258,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
     # check date format
     date_ok, date_err = check_date(start_day)
     if not date_ok:
-        err = show_syntax()
+        err = show_syntax(user_settings)
         logger.error(date_err)
         print(f"{err}\n{date_err}\n")
         input("Press any key to exit.")
@@ -264,7 +266,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
     date_ok, date_err = check_date(end_day)
     if not date_ok:
-        err = show_syntax()
+        err = show_syntax(user_settings)
         logger.error(date_err)
         print(f"{err}\n{date_err}\n")
         input("Press any key to exit.")
@@ -274,7 +276,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
     if start_hr and end_hr:
         time_ok, time_err = check_time(start_hr)
         if not time_ok:
-            err = show_syntax()
+            err = show_syntax(user_settings)
             logger.error(time_err)
             print(f"{err}\n{time_err}\n")
             input("Press any key to exit.")
@@ -282,14 +284,11 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
         time_ok, time_err = check_time(end_hr)
         if not time_ok:
-            err = show_syntax()
+            err = show_syntax(user_settings)
             logger.error(time_err)
             print(f"{err}\n{time_err}\n")
             input("Press any key to exit.")
             return
-
-    # load user settings from json file
-    user_settings = load_user_settings(user_conf_json)
 
     # build event details
     event_details = {
@@ -297,7 +296,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         'description' : descr,
         'calendar' : cal if cal else None,
         'location' : loc,
-        'uid' : (f"{str(datetime.now().timestamp())}_{name}@{domain}").replace(" ", "-")
+        'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
     }
     # event with fixed hours
     if start_hr and end_hr:
@@ -313,7 +312,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
     # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
     if prompt_wait:
-        print(f"\nCaldav ICS CLIent - {domain}\n"
+        print(f"\nCaldav ICS CLIent - {user_settings['domain']}\n"
               "=======================================\n\n"
               f"The following event details were provided:\n\n")
         print(f"EVENT NAME:\t{name}\n"
