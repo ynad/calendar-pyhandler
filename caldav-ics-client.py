@@ -311,7 +311,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
     if invite:
         event_details.update({'invite' : invite})
 
-    # wait for user confirmation, if enabled. To skip change 'prompt' to False
+    # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
     if prompt_wait:
         print(f"\nCaldav ICS CLIent - {domain}\n"
               "=======================================\n\n"
@@ -330,7 +330,8 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
     # upload it to caldav server
     webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
 
-    input("Press any key to exit.")
+    if prompt_wait:
+        input("Press any key to exit.")
 
 
 if __name__ == '__main__':
