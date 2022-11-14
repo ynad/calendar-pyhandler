@@ -1,0 +1,48 @@
+'
+' Sample VBA macro definitions to be used to integrate Excel spreadsheets.
+'
+' https://github.com/ynad/caldav-py-handler
+' info@danielevercelli.it
+'
+
+' macro to add events of training/formation. Single or multi-day. Hours might be provided too
+Sub calAdd_training()
+    ' compose event name
+    EventName = (ActiveSheet.Name + " " + Cells(5, ActiveCell.Column))
+
+    ' determine if course is marked to be taken - performs sub-string search. Key word is "TO DO"
+    i = InStr(ActiveCell.Value, "TO DO")
+    ' if key work is found, grep preceding string(s) as event date(s)
+    If i <> 0 Then
+        EventDate = Mid(ActiveCell.Value, 1, i - 2)
+    Else
+        EventDate = ActiveCell.Value
+
+    ' Format must be "dd/mm/YYYY" or "dd/mm/YYYY-dd/mm/YYYY", no spaces
+    date_array = Split(EventDate, "-", 2)
+    ' 2 dates, multi-day event
+    If UBound(date_array) > 0 Then
+        start_day = date_array(0)
+        end_day = date_array(1)
+    ' single date, single day event
+    Else
+        start_day = date_array(0)
+        end_day = date_array(0)
+    End If
+
+    ' call external script passing parameters in proper syntax
+    Call Shell("python C:\caldav-py-handler\caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "training" & """")
+End Sub
+
+
+' macro to add events of maintenance routines
+Sub calAdd_maintenance()
+    ' compose event name
+    EventName = (ActiveSheet.Name + " " + Cells(ActiveCell.Row, 1))
+    ' start and end day coincide. Hours might be provided too
+    start_day = ActiveCell.Value
+
+    end_day = ActiveCell.Value
+    ' call external script passing parameters in proper syntax
+    Call Shell("python C:\caldav-py-handler\caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "maintenance" & """")
+End Sub
