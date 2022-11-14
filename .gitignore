@@ -130,8 +130,6 @@ dmypy.json
 
 # pyc files
 *.pyc
-# txt files
-*.txt
 # .ics files
 *.ics
 # json files
