@@ -1,26 +1,19 @@
 #!/usr/bin/python
 
 #
-# caldav-ics-client
-# receives event details from arguments, parse them, create an ICS event, upload it via webdav PUT request
-# must provide JSON formatted: User-Agent, webdav server url, authentication
-# based on a NextCloud environment
+## caldav-ics-client.py
+# Receives event details from arguments, parse them, create an ICS event, upload it via webdav PUT request.
+# Must provide JSON formatted file with: User-Agent, webdav server url, authentication, etc.
+# Based on a NextCloud environment.
+#
+# See README.me for full details.
+#
+## License
+# Released under GPL-3.0 license.
 #
 # v0.4 - 2022.11.11 - https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
-
-import sys, os, logging
-import json
-import click
-import requests
-from typing import Dict, List, Tuple
-from requests.auth import HTTPBasicAuth
-from icalendar import Calendar, Event, vCalAddress, vText
-from datetime import datetime, timedelta
-from pathlib import Path
-
-
 
 ###################################################################################################
 # USER SETTINGS - adjust to your environment
@@ -32,6 +25,18 @@ prompt_wait=True
 user_agent="caldav-ics-client"
 ics_file="tmp-event.ics"
 ###################################################################################################
+
+
+
+import sys, os, logging
+import json
+import click
+import requests
+from typing import Dict, List, Tuple
+from requests.auth import HTTPBasicAuth
+from icalendar import Calendar, Event, vCalAddress, vText
+from datetime import datetime, timedelta
+from pathlib import Path
 
 
 
@@ -252,7 +257,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         err = show_syntax(user_settings)
         #logger.error(err)
         print(err)
-        input("Press any key to exit.")
+        input("Press enter to exit.")
         return
 
     # check date format
@@ -261,7 +266,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         err = show_syntax(user_settings)
         logger.error(date_err)
         print(f"{err}\n{date_err}\n")
-        input("Press any key to exit.")
+        input("Press enter to exit.")
         return
 
     date_ok, date_err = check_date(end_day)
@@ -269,7 +274,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         err = show_syntax(user_settings)
         logger.error(date_err)
         print(f"{err}\n{date_err}\n")
-        input("Press any key to exit.")
+        input("Press enter to exit.")
         return
 
     # check time format
@@ -279,7 +284,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
             err = show_syntax(user_settings)
             logger.error(time_err)
             print(f"{err}\n{time_err}\n")
-            input("Press any key to exit.")
+            input("Press enter to exit.")
             return
 
         time_ok, time_err = check_time(end_hr)
@@ -287,7 +292,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
             err = show_syntax(user_settings)
             logger.error(time_err)
             print(f"{err}\n{time_err}\n")
-            input("Press any key to exit.")
+            input("Press enter to exit.")
             return
 
     # build event details
@@ -321,7 +326,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
               f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
               f"LOCATION\t{loc}\n"
               f"CALENDAR:\t{event_details['calendar']}\n")
-        input("Press any key to confirm.")
+        input("Press enter to confirm.")
 
     # compile ICS file
     create_ics(user_settings, event_details)
@@ -330,7 +335,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
     webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
 
     if prompt_wait:
-        input("Press any key to exit.")
+        input("Press enter to exit.")
 
 
 if __name__ == '__main__':
