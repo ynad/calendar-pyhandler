@@ -31,10 +31,10 @@ Missing arguments! Syntax:
 caldav-ics-client.py
     --name "event name"
     --descr "event description"
-    --start_day 01/06/2022
-    --end_day 03/06/2022
-   [--start_hr 10:30:00]
-   [--end_hr 18:45:30]
+    --start_day dd/mm/YYYY
+    --end_day dd/mm/YYYY
+   [--start_hr HH:MM:SS]
+   [--end_hr HH:MM:SS]
    [--loc "event location"]
    [--cal "calendar to be used"]
    [--invitee "email to be invited"]
