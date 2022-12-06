@@ -5,6 +5,7 @@
 ' info@danielevercelli.it
 '
 
+
 ' macro to add events of training/formation. Single or multi-day. Hours might be provided too
 Sub calAdd_training()
     ' compose event name
@@ -17,6 +18,7 @@ Sub calAdd_training()
         EventDate = Mid(ActiveCell.Value, 1, i - 2)
     Else
         EventDate = ActiveCell.Value
+    End If
 
     ' Format must be "dd/mm/YYYY" or "dd/mm/YYYY-dd/mm/YYYY", no spaces
     date_array = Split(EventDate, "-", 2)
@@ -31,7 +33,7 @@ Sub calAdd_training()
     End If
 
     ' call external script passing parameters in proper syntax
-    Call Shell("python C:\caldav-py-handler\caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "training" & """")
+    Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "training" & """")
 End Sub
 
 
@@ -44,5 +46,40 @@ Sub calAdd_maintenance()
 
     end_day = ActiveCell.Value
     ' call external script passing parameters in proper syntax
-    Call Shell("python C:\caldav-py-handler\caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "maintenance" & """")
+    Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "maintenance" & """")
+End Sub
+
+
+' macro to iterate over a predefined set of cells and copy/fill values on given conditions
+Sub Deadline()
+    For Each c In Worksheets("One").Range("B10:B12").Cells
+        If c.Value > 0 Then Worksheets("SUMMARY").Range("D5").Value = c.Value
+    Next
+    For Each c In Worksheets("Two").Range("C10:C12").Cells
+        If c.Value > 0 Then Worksheets("SUMMARY").Range("C5").Value = c.Value
+    Next
+    For Each c In Worksheets("Three").Range("D10:D12").Cells
+        If c.Value > 0 Then Worksheets("SUMMARY").Range("B5").Value = c.Value
+    Next
+End Sub
+
+
+'
+Sub Range()
+    Dim rng As Range: Set rng = Application.Range("Caldaia!B10:C12")
+    Dim cel As Range
+    For Each cel In rng.Cells
+        With cel
+            Debug.Print .Address & ":" & .Value
+        End With
+    Next cel
+End Sub
+
+
+' macro trigger with double click on any cell inside given range
+Sub Worksheet_BeforeDoubleClick(ByVal Target As Range, Cancel As Boolean)
+    If Not Application.Intersect(Target, Range("A1:E21")) Is Nothing Then
+        EventName = (ActiveSheet.Name + " " + Range("A10").Value)
+        Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & EventName & " --start_day " & Target.Value & " --end_day " & Target.Value)
+    End If
 End Sub
