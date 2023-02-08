@@ -11,7 +11,7 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# v0.4 - 2022.11.11 - https://github.com/ynad/caldav-py-handler
+# v0.4.2 - 2023.02.08 - https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
@@ -24,6 +24,7 @@ prompt_wait=True
 # APP SETTINGS - no need to edit normally
 user_agent="caldav-ics-client"
 ics_file="tmp-event.ics"
+version_num="0.4.2"
 ###################################################################################################
 
 
@@ -54,8 +55,8 @@ logger = logging.getLogger(__name__)
 # show command syntax
 def show_syntax(user_settings) -> str:
     err = (
-        f"\nCaldav ICS CLIent - {user_settings['domain']}\n"
-        "=======================================\n\n"
+        f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
+        "==============================================\n\n"
         f"Missing or wrong arguments! Syntax:\n{sys.argv}\n"
         "    --name \"event name\"\n"
         "    --descr \"event description\"\n"
@@ -65,7 +66,7 @@ def show_syntax(user_settings) -> str:
         "   [--end_hr HH:MM:SS]\n"
         "   [--loc \"event location\"]\n"
         "   [--cal \"calendar to be used\"]\n"
-        "   [--invitee \"email to be invited\"]\n"
+        "   [--invite \"email(s) to be invited, separated by space\"]\n"
     )
     return err
 
@@ -80,7 +81,7 @@ def load_user_settings(user_conf_json) -> dict:
 # check string date format
 def check_date(date) -> Tuple[bool, str]:
     try:
-        datetime.strptime(date, "%m/%d/%Y")
+        datetime.strptime(date, "%d/%m/%Y")
     except ValueError as err:
         return False, err
     return True, ""
@@ -233,7 +234,7 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
 @click.option(
     "--loc",
     type=str,
-    default="Main Office"
+    default=""
 )
 @click.option(
     "--cal",
@@ -260,7 +261,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         input("Press enter to exit.")
         return
 
-    # check date format
+    # check start date format
     date_ok, date_err = check_date(start_day)
     if not date_ok:
         err = show_syntax(user_settings)
@@ -269,6 +270,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         input("Press enter to exit.")
         return
 
+    # check end date format
     date_ok, date_err = check_date(end_day)
     if not date_ok:
         err = show_syntax(user_settings)
@@ -300,7 +302,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         'name' : name,
         'description' : descr,
         'calendar' : cal if cal else None,
-        'location' : loc,
+        'location' : loc if loc else user_settings['location_default'],
         'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
     }
     # event with fixed hours
@@ -317,15 +319,16 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
 
     # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
     if prompt_wait:
-        print(f"\nCaldav ICS CLIent - {user_settings['domain']}\n"
-              "=======================================\n\n"
-              f"The following event details were provided:\n\n")
+        print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
+              "==============================================\n\n"
+              f"The following event will be added:\n\n")
         print(f"EVENT NAME:\t{name}\n"
               f"DESCRIPTION:\t{descr}\n"
               f"START DATE:\t{datetime.strftime(event_details['start'], '%d/%m/%Y %H:%M:%S')}\n"
               f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"LOCATION\t{loc}\n"
-              f"CALENDAR:\t{event_details['calendar']}\n")
+              f"LOCATION\t{event_details['location']}\n"
+              f"CALENDAR:\t{event_details['calendar']}\n"
+              f"INVITEE:\t{invite}\n")
         input("Press enter to confirm.")
 
     # compile ICS file

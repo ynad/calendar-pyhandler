@@ -8,6 +8,7 @@
 
 ' macro to add events of training/formation. Single or multi-day. Hours might be provided too
 Sub calAdd_training()
+
     ' compose event name
     EventName = (ActiveSheet.Name + " " + Cells(5, ActiveCell.Column))
 
@@ -34,19 +35,37 @@ Sub calAdd_training()
 
     ' call external script passing parameters in proper syntax
     Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "training" & """")
+
 End Sub
 
 
 ' macro to add events of maintenance routines
 Sub calAdd_maintenance()
+
     ' compose event name
     EventName = (ActiveSheet.Name + " " + Cells(ActiveCell.Row, 1))
+    ' compose event description
+    EventDescr = Cells(ActiveCell.Row, 1)
+    
     ' start and end day coincide. Hours might be provided too
     start_day = ActiveCell.Value
-
     end_day = ActiveCell.Value
+
+    ' invite email(s). Must be separated by spaces
+    ' search for correct given key word to identify correct cell in given possibilities
+    If StrComp(Cells(6, 1), "key-word") = 0 Then
+        InviteEmail = Cells(6, 4)
+    ElseIf StrComp(Cells(7, 1), "key-word") = 0 Then
+        InviteEmail = Cells(7, 4)
+    ElseIf StrComp(Cells(5, 1), "key-word") = 0 Then
+        InviteEmail = Cells(5, 4)
+    End If
+
     ' call external script passing parameters in proper syntax
     Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & """" & EventName & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "maintenance" & """")
+    
+    Call Shell("python ./caldav-py-handler/caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "manutenzioni" & """" & " --invite " & """" & InviteEmail & """")
+    
 End Sub
 
 
