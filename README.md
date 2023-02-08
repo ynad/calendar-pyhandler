@@ -14,7 +14,7 @@ User settings data must be formatted in JSON as follow, by default the app searc
     "calendar_default" : "personal",
     "organizer_name" : "Jane Doe",
     "organizer_role" : "IT",
-    "organizer_email" : "info@example.com".
+    "organizer_email" : "info@example.com",
     "location_default" : "Main Office"
 }
 ```
