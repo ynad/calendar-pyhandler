@@ -14,7 +14,8 @@ User settings data must be formatted in JSON as follow, by default the app searc
     "calendar_default" : "personal",
     "organizer_name" : "Jane Doe",
     "organizer_role" : "IT",
-    "organizer_email" : "info@example.com"
+    "organizer_email" : "info@example.com".
+    "location_default" : "Main Office"
 }
 ```
 `USER SETTINGS` section in the code might need to be adjusted to your working path.
@@ -37,8 +38,15 @@ caldav-ics-client.py
    [--end_hr HH:MM:SS]
    [--loc "event location"]
    [--cal "calendar to be used"]
-   [--invitee "email to be invited"]
+   [--invite "email(s) to be invited, separated by space"]
 ```
+
+## Requirements
+Install required pip libraries with:
+```
+pip install -r requirements.txt
+```
+
 
 ## License
 Released under GPL-3.0 license.
