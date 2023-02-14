@@ -368,12 +368,12 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         event_details.update( { 'invite' : invite } )
 
     # set alarm - all 3 parameters must be given otherwise none is set
-    if alarm_type and alarm_type and alarm_time:
+    if alarm_type and alarm_format and alarm_time:
         alarm_type = alarm_type.upper()
         alarm_format = alarm_format.upper()
-        if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_type == 'D' ):
-            event_details.update( { 'alarm_type' : alarm_type.upper() } )
-            event_details.update( { 'alarm_format' : alarm_format.upper() } )
+        if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_format == 'D' ):
+            event_details.update( { 'alarm_type' : alarm_type } )
+            event_details.update( { 'alarm_format' : alarm_format } )
             event_details.update( { 'alarm_time' : alarm_time } )
 
     # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
