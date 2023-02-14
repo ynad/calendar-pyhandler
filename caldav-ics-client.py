@@ -22,9 +22,9 @@ logging_file="debug.log"
 prompt_wait=True
 
 # APP SETTINGS - no need to edit normally
-user_agent="caldav-ics-client"
-ics_file="tmp-event.ics"
-version_num="0.4.2"
+version_num="0.4.3"
+user_agent=f"caldav-ics-client-{version_num}"
+ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
 
 
@@ -35,7 +35,7 @@ import click
 import requests
 from typing import Dict, List, Tuple
 from requests.auth import HTTPBasicAuth
-from icalendar import Calendar, Event, vCalAddress, vText
+from icalendar import Calendar, Event, Alarm, vCalAddress, vText
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -66,7 +66,10 @@ def show_syntax(user_settings) -> str:
         "   [--end_hr HH:MM:SS]\n"
         "   [--loc \"event location\"]\n"
         "   [--cal \"calendar to be used\"]\n"
-        "   [--invite \"email(s) to be invited, separated by space\"]\n"
+        "   [--invite : email(s) to be invited, separated by space]\n"
+        "   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]\n"
+        "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
+        "   [--alarm_time : time before the event to set an alarm for]\n"
     )
     return err
 
@@ -100,45 +103,73 @@ def check_time(time) -> Tuple[bool, str]:
 def create_ics(user_settings, event_details) -> None:
 
     # init calendar
-    cal = Calendar()
+    mycal = Calendar()
     # set properties to be compliant
-    cal.add("prodid", f"-//CalDav ICS Client//{user_settings['domain']}//github.com/ynad/caldav-py-handler//")
-    cal.add("version", "2.0")
+    mycal.add("prodid", f"-//CalDav ICS Client//{version_num}//{user_settings['domain']}//github.com/ynad/caldav-py-handler//")
+    mycal.add("version", "2.0")
+    #mycal.add('method', "REQUEST")
 
     # add calendar subcomponents
-    event = Event()
-    #event.add('name', event_details['name'])
-    event.add('summary', event_details['name'])
-    event.add('description', event_details['description'])
-    event.add('dtstart', event_details['start'])
-    event.add('dtend', event_details['end'])
-
-    # add organizer
-    organizer = vCalAddress(user_settings['organizer_email'])
-    organizer.params['name'] = vText(user_settings['organizer_name'])
-    organizer.params['role'] = vText(user_settings['organizer_role'])
-    event['organizer'] = organizer
+    myevent = Event()
+    #myevent.add('name', event_details['name'])
+    myevent.add('summary', event_details['name'])
+    myevent.add('description', event_details['description'])
+    myevent.add('dtstart', event_details['start'])
+    myevent.add('dtend', event_details['end'])
+    myevent.add('status', "confirmed")
 
     # add location
-    event['location'] = vText(event_details['location'])
+    myevent['location'] = vText(event_details['location'])
+
+    # creation time
+    create_time = datetime.strptime(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "%d/%m/%Y %H:%M:%S")
+    myevent.add('created', create_time)
+    
     # uid - unique event ID
-    event['uid'] = event_details['uid']
-    event.add('priority', 5)
+    myevent['uid'] = event_details['uid']
+    myevent.add('priority', 5)
+
+    # add organizer
+    organizer = vCalAddress(f"MAILTO:{user_settings['organizer_email']}")
+    organizer.params['name'] = vText(user_settings['organizer_name'])
+    organizer.params['role'] = vText(user_settings['organizer_role'])
+    myevent['organizer'] = organizer
 
     # add invites if present
     if 'invite' in event_details:
-        # add attendees - to-do list of attendees
-        attendee = vCalAddress(event_details['invite'])
-        attendee.params['name'] = vText(event_details['invite'])
-        attendee.params['role'] = vText('REQ-PARTICIPANT')
-        event.add('attendee', attendee, encode=0)
+        invitees = event_details['invite'].split()
+        for i in invitees:
+            attendee = vCalAddress(f"MAILTO:{i}")
+            attendee.params['name'] = vText(i)
+            attendee.params['role'] = vText('REQ-PARTICIPANT')
+            myevent.add('attendee', attendee, encode=0)
+
+    # add an alarm for the event
+    if 'alarm_type' in event_details:
+        myalarm = Alarm()
+        myalarm.add("action", event_details['alarm_type'])
+        myalarm.add('summary', event_details['name'])
+        myalarm.add('description', event_details['description'])
+
+        # if invitees are present, add email notification
+        if 'invite' in event_details:
+            invitees = event_details['invite'].split()
+            for i in invitees:
+                attendee = vCalAddress(f"MAILTO:{i}")
+                #attendee.params['name'] = vText(i)
+                #attendee.params['role'] = vText('REQ-PARTICIPANT')
+                myalarm.add('attendee', attendee, encode=0)
+        #myalarm.add("trigger", timedelta(days=-reminder_days))
+        # The only way to convince Outlook to do it correctly
+        myalarm.add("TRIGGER;RELATED=START", f"-PT{event_details['alarm_time']}{event_details['alarm_format']}")
+        myevent.add_component(myalarm)
 
     # add event to the calendar
-    cal.add_component(event)
+    mycal.add_component(myevent)
 
     # write event to ICS file
     with open(ics_file, 'wb') as f:
-        f.write(cal.to_ical())
+        f.write(mycal.to_ical())
 
 
 # make PUT request to upload ICS event file to given calendar
@@ -246,14 +277,31 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     type=str,
     default=""
 )
+@click.option(
+    "--alarm_type",
+    type=str,
+    default=""
+)
+@click.option(
+    "--alarm_format",
+    type=str,
+    default=""
+)
+@click.option(
+    "--alarm_time",
+    type=str,
+    default=""
+)
+
 
 ## Main
-def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
+def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time):
 
     # load user settings from json file
     user_settings = load_user_settings(user_conf_json)
 
     # check command line arguments
+    # start and end day are mandatory
     if not start_day or not end_day:
         err = show_syntax(user_settings)
         #logger.error(err)
@@ -305,17 +353,28 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
         'location' : loc if loc else user_settings['location_default'],
         'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
     }
+
     # event with fixed hours
     if start_hr and end_hr:
-        event_details.update({'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S")})
-        event_details.update({'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S")})
+        event_details.update( { 'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
+        event_details.update( { 'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
     # full day event
     else:
-        event_details.update({'start' : datetime.strptime(f"{start_day}", "%d/%m/%Y").date()})
-        event_details.update({'end' : datetime.strptime(f"{end_day}", "%d/%m/%Y").date() + timedelta(days=1)})
-    # add invitees - to-do list of invitations
+        event_details.update( { 'start' : datetime.strptime(f"{start_day}", "%d/%m/%Y").date() } )
+        event_details.update( { 'end' : datetime.strptime(f"{end_day}", "%d/%m/%Y").date() + timedelta(days=1) } )
+    
+    # add invitees, can be 1 or more separated by a space
     if invite:
-        event_details.update({'invite' : invite})
+        event_details.update( { 'invite' : invite } )
+
+    # set alarm - all 3 parameters must be given otherwise none is set
+    if alarm_type and alarm_type and alarm_time:
+        alarm_type = alarm_type.upper()
+        alarm_format = alarm_format.upper()
+        if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_type == 'D' ):
+            event_details.update( { 'alarm_type' : alarm_type.upper() } )
+            event_details.update( { 'alarm_format' : alarm_format.upper() } )
+            event_details.update( { 'alarm_time' : alarm_time } )
 
     # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
     if prompt_wait:
@@ -327,8 +386,12 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite):
               f"START DATE:\t{datetime.strftime(event_details['start'], '%d/%m/%Y %H:%M:%S')}\n"
               f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
               f"LOCATION\t{event_details['location']}\n"
-              f"CALENDAR:\t{event_details['calendar']}\n"
-              f"INVITEE:\t{invite}\n")
+              f"CALENDAR:\t{event_details['calendar']}")
+        if invite:
+            print(f"INVITEE:\t{invite}")
+        if 'alarm_type' in event_details:
+            print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before\n")
+
         input("Press enter to confirm.")
 
     # compile ICS file
