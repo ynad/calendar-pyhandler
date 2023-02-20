@@ -11,7 +11,7 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# v0.4.2 - 2023.02.08 - https://github.com/ynad/caldav-py-handler
+# v0.4.3 - 2023.02.20 - https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
@@ -159,9 +159,13 @@ def create_ics(user_settings, event_details) -> None:
                 #attendee.params['name'] = vText(i)
                 #attendee.params['role'] = vText('REQ-PARTICIPANT')
                 myalarm.add('attendee', attendee, encode=0)
+
+        # set trigger time
         #myalarm.add("trigger", timedelta(days=-reminder_days))
-        # The only way to convince Outlook to do it correctly
-        myalarm.add("TRIGGER;RELATED=START", f"-PT{event_details['alarm_time']}{event_details['alarm_format']}")
+        if event_details['fullday'] is True:
+            myalarm.add("TRIGGER;RELATED=START", f"-P{event_details['alarm_time']}{event_details['alarm_format']}")
+        else:
+            myalarm.add("TRIGGER;RELATED=START", f"-PT{event_details['alarm_time']}{event_details['alarm_format']}")
         myevent.add_component(myalarm)
 
     # add event to the calendar
@@ -358,10 +362,12 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
     if start_hr and end_hr:
         event_details.update( { 'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
         event_details.update( { 'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
+        event_details.update( { 'fullday' : False } )
     # full day event
     else:
         event_details.update( { 'start' : datetime.strptime(f"{start_day}", "%d/%m/%Y").date() } )
         event_details.update( { 'end' : datetime.strptime(f"{end_day}", "%d/%m/%Y").date() + timedelta(days=1) } )
+        event_details.update( { 'fullday' : True } )
     
     # add invitees, can be 1 or more separated by a space
     if invite:
