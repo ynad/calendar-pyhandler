@@ -70,13 +70,14 @@ def show_syntax(user_settings) -> str:
         "   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]\n"
         "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
         "   [--alarm_time : time before the event to set an alarm for]\n"
+        "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
     )
     return err
 
 
 # load user settings from file
 def load_user_settings(user_conf_json) -> dict:
-    logger.debug("Loading user json settings from file: " + str(user_conf_json))
+    logger.info("Loading user json settings from file: " + str(user_conf_json))
     with open(user_conf_json, 'r') as f:
         return json.load(f)
 
@@ -296,58 +297,28 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     type=str,
     default=""
 )
+@click.option(
+    "--prompt",
+    type=str,
+    default="y"
+)
+
 
 
 ## Main
-def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time):
+def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt):
 
     # load user settings from json file
     user_settings = load_user_settings(user_conf_json)
 
     # check command line arguments
-    # start and end day are mandatory
-    if not start_day or not end_day:
-        err = show_syntax(user_settings)
-        #logger.error(err)
-        print(err)
+    args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
+    if not args_ack:
+        syntax = show_syntax(user_settings)
+        logger.error(err)
+        print(f"{syntax}\n{err}\n")
         input("Press enter to exit.")
         return
-
-    # check start date format
-    date_ok, date_err = check_date(start_day)
-    if not date_ok:
-        err = show_syntax(user_settings)
-        logger.error(date_err)
-        print(f"{err}\n{date_err}\n")
-        input("Press enter to exit.")
-        return
-
-    # check end date format
-    date_ok, date_err = check_date(end_day)
-    if not date_ok:
-        err = show_syntax(user_settings)
-        logger.error(date_err)
-        print(f"{err}\n{date_err}\n")
-        input("Press enter to exit.")
-        return
-
-    # check time format
-    if start_hr and end_hr:
-        time_ok, time_err = check_time(start_hr)
-        if not time_ok:
-            err = show_syntax(user_settings)
-            logger.error(time_err)
-            print(f"{err}\n{time_err}\n")
-            input("Press enter to exit.")
-            return
-
-        time_ok, time_err = check_time(end_hr)
-        if not time_ok:
-            err = show_syntax(user_settings)
-            logger.error(time_err)
-            print(f"{err}\n{time_err}\n")
-            input("Press enter to exit.")
-            return
 
     # build event details
     event_details = {
@@ -357,21 +328,25 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         'location' : loc if loc else user_settings['location_default'],
         'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
     }
+    logger.debug(f"Building event details with UID: {event_details['uid']}")
 
     # event with fixed hours
     if start_hr and end_hr:
         event_details.update( { 'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
         event_details.update( { 'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
         event_details.update( { 'fullday' : False } )
+        logger.debug(f"Fixed hours event")
     # full day event
     else:
         event_details.update( { 'start' : datetime.strptime(f"{start_day}", "%d/%m/%Y").date() } )
         event_details.update( { 'end' : datetime.strptime(f"{end_day}", "%d/%m/%Y").date() + timedelta(days=1) } )
         event_details.update( { 'fullday' : True } )
+        logger.debug(f"Full day event")
     
     # add invitees, can be 1 or more separated by a space
     if invite:
         event_details.update( { 'invite' : invite } )
+        logger.debug(f"Invites requested for: {invite}")
 
     # set alarm - all 3 parameters must be given otherwise none is set
     if alarm_type and alarm_format and alarm_time:
