@@ -11,7 +11,7 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# v0.4.3 - 2023.02.20 - https://github.com/ynad/caldav-py-handler
+# v0.4.4 - 2023.02.28 - https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
@@ -19,11 +19,10 @@
 # USER SETTINGS - adjust to your environment
 user_conf_json="user_settings.json"
 logging_file="debug.log"
-prompt_wait=True
 
 # APP SETTINGS - no need to edit normally
-version_num="0.4.3"
-user_agent=f"caldav-ics-client-{version_num}"
+version_num="0.4.4"
+user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
 
@@ -100,10 +99,52 @@ def check_time(time) -> Tuple[bool, str]:
     return True, ""
 
 
+# check arguments and return error strings
+def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[bool, str]:
+
+    logger.debug(f"Running args check")
+
+    # start and end day are mandatory
+    if not start_day or not end_day:
+        return False, "Event start and end date are mandatory!"
+
+    # check START date format
+    date_ok, date_err = check_date(start_day)
+    if not date_ok:
+        return False, date_err
+
+    # check END date format
+    date_ok, date_err = check_date(end_day)
+    if not date_ok:
+        return False, date_err
+
+    # check start date is not after end date
+    if start_day > end_day:
+        err = f"Event start date cannot be after end date: {start_day}, {end_day}"
+        return False, err
+
+    # check time format
+    if start_hr and end_hr:
+        time_ok, time_err = check_time(start_hr)
+        if not time_ok:
+            return False, time_err
+
+        time_ok, time_err = check_time(end_hr)
+        if not time_ok:
+            return False, time_err
+
+        if start_hr > end_hr:
+            err = f"Event start hour cannot be after end hour: {start_hr}, {end_hr}"
+            return False, err
+
+    return True, ""
+
+
 # create ICS file with provided event details
 def create_ics(user_settings, event_details) -> None:
 
     # init calendar
+    logger.debug(f"ICS: create calendar")
     mycal = Calendar()
     # set properties to be compliant
     mycal.add("prodid", f"-//CalDav ICS Client//{version_num}//{user_settings['domain']}//github.com/ynad/caldav-py-handler//")
@@ -111,6 +152,7 @@ def create_ics(user_settings, event_details) -> None:
     #mycal.add('method', "REQUEST")
 
     # add calendar subcomponents
+    logger.debug(f"ICS: create event")
     myevent = Event()
     #myevent.add('name', event_details['name'])
     myevent.add('summary', event_details['name'])
@@ -124,6 +166,7 @@ def create_ics(user_settings, event_details) -> None:
 
     # creation time
     create_time = datetime.strptime(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "%d/%m/%Y %H:%M:%S")
+    logger.debug(f"ICS: created time: {create_time}")
     myevent.add('created', create_time)
     
     # uid - unique event ID
@@ -131,6 +174,7 @@ def create_ics(user_settings, event_details) -> None:
     myevent.add('priority', 5)
 
     # add organizer
+    logger.debug(f"ICS: organizer: {user_settings['organizer_email']}")
     organizer = vCalAddress(f"MAILTO:{user_settings['organizer_email']}")
     organizer.params['name'] = vText(user_settings['organizer_name'])
     organizer.params['role'] = vText(user_settings['organizer_role'])
@@ -140,6 +184,7 @@ def create_ics(user_settings, event_details) -> None:
     if 'invite' in event_details:
         invitees = event_details['invite'].split()
         for i in invitees:
+            logger.debug(f"ICS: adding invite for: {i}")
             attendee = vCalAddress(f"MAILTO:{i}")
             attendee.params['name'] = vText(i)
             attendee.params['role'] = vText('REQ-PARTICIPANT')
@@ -147,6 +192,7 @@ def create_ics(user_settings, event_details) -> None:
 
     # add an alarm for the event
     if 'alarm_type' in event_details:
+        logger.debug(f"ICS: adding alarm")
         myalarm = Alarm()
         myalarm.add("action", event_details['alarm_type'])
         myalarm.add('summary', event_details['name'])
@@ -156,6 +202,7 @@ def create_ics(user_settings, event_details) -> None:
         if 'invite' in event_details:
             invitees = event_details['invite'].split()
             for i in invitees:
+                logger.debug(f"ICS: alarm invite for: {i}")
                 attendee = vCalAddress(f"MAILTO:{i}")
                 #attendee.params['name'] = vText(i)
                 #attendee.params['role'] = vText('REQ-PARTICIPANT')
@@ -164,8 +211,10 @@ def create_ics(user_settings, event_details) -> None:
         # set trigger time
         #myalarm.add("trigger", timedelta(days=-reminder_days))
         if event_details['fullday'] is True:
+            logger.debug(f"ICS: fullday event")
             myalarm.add("TRIGGER;RELATED=START", f"-P{event_details['alarm_time']}{event_details['alarm_format']}")
         else:
+            logger.debug(f"ICS: fixed hours event")
             myalarm.add("TRIGGER;RELATED=START", f"-PT{event_details['alarm_time']}{event_details['alarm_format']}")
         myevent.add_component(myalarm)
 
@@ -173,6 +222,7 @@ def create_ics(user_settings, event_details) -> None:
     mycal.add_component(myevent)
 
     # write event to ICS file
+    logger.info(f"ICS: write to file {ics_file}")
     with open(ics_file, 'wb') as f:
         f.write(mycal.to_ical())
 
@@ -188,15 +238,18 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
         return
 
     # read ICS ifle
+    logger.info(f"webdav: read ics from file {ics_file}")
     with open(ics_file, 'rb') as f:
         data = f.read()
 
     # if calendar is not set go default
     if calendar == None:
         calendar = user_settings['calendar_default']
+    logger.debug(f"webdav: calendar set to: {calendar}")
 
     # make PUT request
     try:
+        logger.debug(f"webdav: put request user-agent: {user_agent}")
         res = requests.put(url=f"{user_settings['server']}/{user_settings['username']}/{calendar}/{event_id}",
                             data=data,
                             headers={'Content-Type': 'text/calendar', 'User-Agent': user_agent},
@@ -205,17 +258,17 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
         if (res.status_code == 201):
             msg = f"Created ({res.status_code})"
             print(msg)
-            logger.debug(msg)
+            logger.info(msg)
 
         elif (res.status_code == 202):
             msg = f"Accepted ({res.status_code})"
             print(msg)
-            logger.debug(msg)
+            logger.info(msg)
 
         elif (res.status_code == 204):
             msg = f"No Content ({res.status_code})"
             print(msg)
-            logger.debug(msg)
+            logger.info(msg)
 
         else:
             err = (
@@ -231,6 +284,7 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     finally:
         # rm tmp ics files
         if os.path.exists(ics_file):
+            logger.info(f"webdav: remove ics file {ics_file}")
             os.remove(ics_file)
         #pass
 
@@ -356,9 +410,11 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
             event_details.update( { 'alarm_type' : alarm_type } )
             event_details.update( { 'alarm_format' : alarm_format } )
             event_details.update( { 'alarm_time' : alarm_time } )
+            logger.debug(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
 
-    # wait for user confirmation, if enabled. To skip change 'prompt_wait' to False
-    if prompt_wait:
+    # wait for user confirmation if enabled. To skip give argument '--prompt n'
+    if prompt == "y":
+        logger.debug(f"Wait for user prompt to proceed")
         print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
               "==============================================\n\n"
               f"The following event will be added:\n\n")
@@ -371,8 +427,9 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         if invite:
             print(f"INVITEE:\t{invite}")
         if 'alarm_type' in event_details:
-            print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before\n")
+            print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before")
 
+        print("")
         input("Press enter to confirm.")
 
     # compile ICS file
@@ -381,7 +438,8 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
     # upload it to caldav server
     webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
 
-    if prompt_wait:
+    if prompt == "y":
+        print("")
         input("Press enter to exit.")
 
 
