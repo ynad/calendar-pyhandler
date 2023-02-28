@@ -39,6 +39,10 @@ caldav-ics-client.py
    [--loc "event location"]
    [--cal "calendar to be used"]
    [--invite "email(s) to be invited, separated by space"]
+   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]
+   [--alarm_format : \"h\" = hours, \"d\" = days]
+   [--alarm_time : time before the event to set an alarm for]
+   [--prompt "y/n" : wait or skip user confirmation. Default: y]
 ```
 
 ## Requirements
