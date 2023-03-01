@@ -11,7 +11,8 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# v0.4.4 - 2023.02.28 - https://github.com/ynad/caldav-py-handler
+# 2023.03.01
+# https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
@@ -21,7 +22,7 @@ user_conf_json="user_settings.json"
 logging_file="debug.log"
 
 # APP SETTINGS - no need to edit normally
-version_num="0.4.4"
+version_num="0.4.5"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
@@ -59,8 +60,8 @@ def show_syntax(user_settings) -> str:
         f"Missing or wrong arguments! Syntax:\n{sys.argv}\n"
         "    --name \"event name\"\n"
         "    --descr \"event description\"\n"
-        "    --start_day dd/mm/YYYY\n"
-        "    --end_day dd/mm/YYYY\n"
+        "    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
+        "    --end_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
         "   [--start_hr HH:MM:SS]\n"
         "   [--end_hr HH:MM:SS]\n"
         "   [--loc \"event location\"]\n"
@@ -109,19 +110,24 @@ def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[boo
         return False, "Event start and end date are mandatory!"
 
     # check START date format
-    date_ok, date_err = check_date(start_day)
-    if not date_ok:
-        return False, date_err
+    start_day_list = start_day.split()
+    for start_d in start_day_list:
+        date_ok, date_err = check_date(start_d)
+        if not date_ok:
+            return False, date_err
 
     # check END date format
-    date_ok, date_err = check_date(end_day)
-    if not date_ok:
-        return False, date_err
+    end_day_list = end_day.split()
+    for end_d in end_day_list:
+        date_ok, date_err = check_date(end_d)
+        if not date_ok:
+            return False, date_err
 
-    # check start date is not after end date
-    if start_day > end_day:
-        err = f"Event start date cannot be after end date: {start_day}, {end_day}"
-        return False, err
+    # check START date is not after END date (only when provided single dates or date range)
+    if len(start_day_list) == 1 and len(end_day_list) == 1:
+        if start_day_list[0] > end_day_list[0]:
+            err = f"Event start date cannot be after end date: {start_day_list[0]}, {end_day_list[0]}"
+            return False, err
 
     # check time format
     if start_hr and end_hr:
@@ -374,73 +380,80 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         input("Press enter to exit.")
         return
 
-    # build event details
-    event_details = {
-        'name' : name,
-        'description' : descr,
-        'calendar' : cal if cal else None,
-        'location' : loc if loc else user_settings['location_default'],
-        'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
-    }
-    logger.debug(f"Building event details with UID: {event_details['uid']}")
+    # if more than one start & end days are provided, split dates and repeat all procedure for each one
+    start_day_list = start_day.split()
+    end_day_list = end_day.split()
 
-    # event with fixed hours
-    if start_hr and end_hr:
-        event_details.update( { 'start' : datetime.strptime(f"{start_day} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
-        event_details.update( { 'end' : datetime.strptime(f"{end_day} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
-        event_details.update( { 'fullday' : False } )
-        logger.debug(f"Fixed hours event")
-    # full day event
-    else:
-        event_details.update( { 'start' : datetime.strptime(f"{start_day}", "%d/%m/%Y").date() } )
-        event_details.update( { 'end' : datetime.strptime(f"{end_day}", "%d/%m/%Y").date() + timedelta(days=1) } )
-        event_details.update( { 'fullday' : True } )
-        logger.debug(f"Full day event")
-    
-    # add invitees, can be 1 or more separated by a space
-    if invite:
-        event_details.update( { 'invite' : invite } )
-        logger.debug(f"Invites requested for: {invite}")
+    for i, day in enumerate(start_day_list):
 
-    # set alarm - all 3 parameters must be given otherwise none is set
-    if alarm_type and alarm_format and alarm_time:
-        alarm_type = alarm_type.upper()
-        alarm_format = alarm_format.upper()
-        if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_format == 'D' ):
-            event_details.update( { 'alarm_type' : alarm_type } )
-            event_details.update( { 'alarm_format' : alarm_format } )
-            event_details.update( { 'alarm_time' : alarm_time } )
-            logger.debug(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
+        # build event details
+        event_details = {
+            'name' : name,
+            'description' : descr,
+            'calendar' : cal if cal else None,
+            'location' : loc if loc else user_settings['location_default'],
+            'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
+        }
+        logger.debug(f"Building event details with UID: {event_details['uid']}")
 
-    # wait for user confirmation if enabled. To skip give argument '--prompt n'
-    if prompt == "y":
-        logger.debug(f"Wait for user prompt to proceed")
-        print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
-              "==============================================\n\n"
-              f"The following event will be added:\n\n")
-        print(f"EVENT NAME:\t{name}\n"
-              f"DESCRIPTION:\t{descr}\n"
-              f"START DATE:\t{datetime.strftime(event_details['start'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"LOCATION\t{event_details['location']}\n"
-              f"CALENDAR:\t{event_details['calendar']}")
+        # event with fixed hours
+        if start_hr and end_hr:
+            event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
+            event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
+            event_details.update( { 'fullday' : False } )
+            logger.debug(f"Fixed hours event")
+        # full day event
+        else:
+            event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]}", "%d/%m/%Y").date() } )
+            event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]}", "%d/%m/%Y").date() + timedelta(days=1) } )
+            event_details.update( { 'fullday' : True } )
+            logger.debug(f"Full day event")
+        
+        # add invitees, can be 1 or more separated by a space
         if invite:
-            print(f"INVITEE:\t{invite}")
-        if 'alarm_type' in event_details:
-            print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before")
+            event_details.update( { 'invite' : invite } )
+            logger.debug(f"Invites requested for: {invite}")
 
-        print("")
-        input("Press enter to confirm.")
+        # set alarm - all 3 parameters must be given otherwise none is set
+        if alarm_type and alarm_format and alarm_time:
+            alarm_type = alarm_type.upper()
+            alarm_format = alarm_format.upper()
+            if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_format == 'D' ):
+                event_details.update( { 'alarm_type' : alarm_type } )
+                event_details.update( { 'alarm_format' : alarm_format } )
+                event_details.update( { 'alarm_time' : alarm_time } )
+                logger.debug(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
 
-    # compile ICS file
-    create_ics(user_settings, event_details)
+        # wait for user confirmation if enabled. To skip give argument '--prompt n'
+        if prompt == "y":
+            logger.debug(f"Wait for user prompt to proceed")
+            print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
+                  "==============================================\n\n"
+                  f"The following event will be added ({i+1}/{len(start_day_list)}):\n\n")
+            print(f"EVENT NAME:\t{name}\n"
+                  f"DESCRIPTION:\t{descr}\n"
+                  f"\nSTART DATE:\t{datetime.strftime(event_details['start'], '%d/%m/%Y %H:%M:%S')}\n"
+                  f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
+                  f"LOCATION:\t{event_details['location']}\n"
+                  f"CALENDAR:\t{event_details['calendar']}")
+            if invite:
+                print(f"INVITEE:\t{invite}")
+            if 'alarm_type' in event_details:
+                print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before")
 
-    # upload it to caldav server
-    webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
+            print("")
+            input("Press enter to confirm.")
 
-    if prompt == "y":
-        print("")
-        input("Press enter to exit.")
+        # compile ICS file
+        create_ics(user_settings, event_details)
+
+        # upload it to caldav server
+        webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
+
+        if prompt == "y":
+            print("")
+            if i == len(start_day_list) - 1:
+                input("Press enter to exit.")
 
 
 if __name__ == '__main__':
