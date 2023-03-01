@@ -1,6 +1,7 @@
 '
 ' Sample VBA macro definitions to be used to integrate Excel spreadsheets.
 '
+' v0.4.5 - 2023.03.01
 ' https://github.com/ynad/caldav-py-handler
 ' info@danielevercelli.it
 '
@@ -10,30 +11,78 @@
 Sub calAdd_training()
 
     ' compose event name
-    If IsEmpty(Cells(5, ActiveCell.Column - 1)) Then
+    If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
         ' date and deadline same column & cell
-        EventName = (ActiveSheet.Name + " " + Cells(5, ActiveCell.Column))
+        EventName = ActiveSheet.Name + " " + Cells(5, ActiveCell.Column) + " " + Cells(6, ActiveCell.Column)
     Else
         ' column is splitted in date and deadline
-        EventName = (ActiveSheet.Name + " " + Cells(5, ActiveCell.Column - 1))
+        EventName = ActiveSheet.Name + " " + Cells(5, ActiveCell.Column - 1) + " " + Cells(6, ActiveCell.Column)
     End If
     EventName = Application.WorksheetFunction.Trim(EventName)
     
-    ' date format can be: single date "dd/mm/YYYY" or range of dates "dd/mm/YYYY-dd/mm/YYYY" or comma separated dates "dd/mm/YYYY,dd/mm/YYYY,..." (no white spaces)
+    ' date format can be: single date "dd/mm/YYYY", range of dates "dd/mm/YYYY - dd/mm/YYYY"
+    ' list of dates, single or ranges, separated by comma "dd/mm/YYYY, dd/mm/YYYY - dd/mm/YYYY"
+    ' the mandatory format is: " - " for ranges, ", " for lists. Whitespaces included.
     EventDate = ActiveCell.Value
-    date_array = Split(EventDate, "-", 2)
-    ' in case of 2 dates, multi-day event
+
+    ' check if list of dates
+    date_array = Split(EventDate, ", ", -1)
     If UBound(date_array) > 0 Then
-        start_day = date_array(0)
-        end_day = date_array(1)
-    ' in case of single date, single day event
+    
+        ' cylce over list and check if single or range dates
+        Dim j As Long
+        For j = 0 To UBound(date_array)
+            ' search last string for comment between "()", if found consider only date
+            If j = UBound(date_array) Then
+                date_comment = Split(date_array(j), " (", -1)
+                If UBound(date_comment) > 0 Then
+                    data_j = date_comment(0)
+                Else
+                    data_j = date_array(j)
+                End If
+            Else
+                data_j = date_array(j)
+            End If
+        
+            date_range = Split(data_j, " - ", 2)
+            ' date range
+            If UBound(date_range) > 0 Then
+                start_day = start_day & " " & date_range(0)
+                end_day = end_day & " " & date_range(1)
+            Else
+            ' single date
+                start_day = start_day & " " & date_range(0)
+                end_day = end_day & " " & date_range(0)
+            End If
+        Next j
+
     Else
-        start_day = date_array(0)
-        end_day = date_array(0)
+    ' else check if date range
+        date_array = Split(EventDate, " - ", 2)
+        If UBound(date_array) > 0 Then
+            start_day = date_array(0)
+            ' search string for comment between "()", if found consider only date
+            date_comment = Split(date_array(1), " (", -1)
+            If UBound(date_comment) > 0 Then
+                end_day = date_comment(0)
+            Else
+                end_day = date_array(1)
+            End If
+        Else
+        ' single date
+            date_array = Split(EventDate, " (", -1)
+            If UBound(date_array) > 0 Then
+                start_day = date_array(0)
+                end_day = date_array(0)
+            Else
+                start_day = EventDate
+                end_day = EventDate
+            End If
+        End If
     End If
     
     ' search for same event date, and add all corresponding values to string variable
-    Dim N As Long, i As Long, j As Long
+    Dim N As Long, i As Long
     Dim values_string As String
     ' count number of rows of current A column in current sheet
     N = Cells(Rows.Count, "A").End(xlUp).Row
@@ -56,13 +105,23 @@ Sub calAdd_training()
             End If
         End If
     Next i
+    ' crop last comma+whitespace from values string
+    values_string = Left(values_string, Len(values_string) - 2)
     
     ' compose event description
     ' use different pattern depending on the same parameter used before, in this example person ID number
     If Cells(ActiveCell.Row, 2) < 1000 Then
-        EventDescr = Cells(5, ActiveCell.Column - 1) + "; PATTERN1: " + values_string
+        If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "PATTERN_1: " + vbCrLf + values_string
+        Else
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "PATTERN_1: " + vbCrLf + values_string
+        End If
     Else
-        EventDescr = Cells(5, ActiveCell.Column - 1) + "; PATTERN2: " + values_string
+        If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "PATTERN_2: " + vbCrLf + values_string
+        Else
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "PATTERN_2: " + vbCrLf + values_string
+        End If
     End If
     ' trim extra white spaces in description
     EventDescr = Application.WorksheetFunction.Trim(EventDescr)
@@ -78,7 +137,7 @@ Sub calAdd_training()
     'End If
 
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 60" & """")
+    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 30" & """")
 
 End Sub
 
@@ -142,13 +201,15 @@ Sub calAdd_maintenance_invite()
     end_day = ActiveCell.Value
     
     ' invite email(s). Must be separated by spaces
-    ' search for correct given key word to identify correct cell in given possibilities
+    ' search for correct given key word to identify correct cell with email(s)
     If StrComp(Cells(6, 1), "TO BE INVITED") = 0 Then
         InviteEmail = Cells(6, 4)
     ElseIf StrComp(Cells(7, 1), "TO BE INVITED") = 0 Then
         InviteEmail = Cells(7, 4)
     ElseIf StrComp(Cells(5, 1), "TO BE INVITED") = 0 Then
         InviteEmail = Cells(5, 4)
+    ElseIf StrComp(Cells(4, 1), "TO BE INVITED") = 0 Then
+        InviteEmail = Cells(4, 4)
     End If
         
     ' call external script passing parameters in proper syntax
