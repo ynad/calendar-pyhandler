@@ -11,7 +11,7 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2023.03.01
+# 2023.03.02
 # https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
@@ -22,7 +22,7 @@ user_conf_json="user_settings.json"
 logging_file="debug.log"
 
 # APP SETTINGS - no need to edit normally
-version_num="0.4.5"
+version_num="0.4.6"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
@@ -383,7 +383,9 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
     # if more than one start & end days are provided, split dates and repeat all procedure for each one
     start_day_list = start_day.split()
     end_day_list = end_day.split()
+    events_list = []
 
+    # cycle by key over list of event dates and to list one event each
     for i, day in enumerate(start_day_list):
 
         # build event details
@@ -424,36 +426,49 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
                 event_details.update( { 'alarm_time' : alarm_time } )
                 logger.debug(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
 
-        # wait for user confirmation if enabled. To skip give argument '--prompt n'
-        if prompt == "y":
-            logger.debug(f"Wait for user prompt to proceed")
-            print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
-                  "==============================================\n\n"
-                  f"The following event will be added ({i+1}/{len(start_day_list)}):\n\n")
-            print(f"EVENT NAME:\t{name}\n"
-                  f"DESCRIPTION:\t{descr}\n"
-                  f"\nSTART DATE:\t{datetime.strftime(event_details['start'], '%d/%m/%Y %H:%M:%S')}\n"
-                  f"END DATE:\t{datetime.strftime(event_details['end'], '%d/%m/%Y %H:%M:%S')}\n"
-                  f"LOCATION:\t{event_details['location']}\n"
-                  f"CALENDAR:\t{event_details['calendar']}")
-            if invite:
-                print(f"INVITEE:\t{invite}")
-            if 'alarm_type' in event_details:
-                print(f"ALARM:\t\t{event_details['alarm_type']}, {event_details['alarm_time']}{event_details['alarm_format']} before")
+        # append event to list
+        events_list.append(event_details)
 
-            print("")
-            input("Press enter to confirm.")
+
+    # wait for user confirmation if enabled. To skip give argument '--prompt n'
+    if prompt == "y":
+        logger.debug(f"Wait for user prompt to proceed")
+        print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
+               "==============================================\n\n"
+              f"The following {len(start_day_list)} event(s) will be added:\n\n")
+
+        # cycle over events list
+        for j, event_n in enumerate(events_list):
+
+            print(f"Event {j+1}/{len(start_day_list)}\n"
+                  f"-----------\n\n"
+                  f"NAME:\t\t{event_n['name']}\n"
+                  f"DESCRIPTION:\t{event_n['description']}\n"
+                  f"\nSTART DATE:\t{datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
+                  f"END DATE:\t{datetime.strftime(event_n['end'], '%d/%m/%Y %H:%M:%S')}\n"
+                  f"LOCATION:\t{event_n['location']}\n"
+                  f"CALENDAR:\t{event_n['calendar']}")
+            if invite:
+                print(f"INVITEE:\t{event_n['invite']}")
+            if 'alarm_type' in event_n:
+                print(f"ALARM:\t\t{event_n['alarm_type']}, {event_n['alarm_time']}{event_n['alarm_format']} before")
+            print("----------------------------------------------\n")
+
+        input("Press enter to confirm.")
+
+    # compile ICS and create event for each one in list
+    for event_n in events_list:
 
         # compile ICS file
-        create_ics(user_settings, event_details)
+        create_ics(user_settings, event_n)
 
         # upload it to caldav server
-        webdav_put_ics(user_settings, event_details['calendar'], event_details['uid'])
+        webdav_put_ics(user_settings, event_n['calendar'], event_n['uid'])
 
-        if prompt == "y":
-            print("")
-            if i == len(start_day_list) - 1:
-                input("Press enter to exit.")
+    # final prompt
+    if prompt == "y":
+        print("")
+        input("Press enter to exit.")
 
 
 if __name__ == '__main__':
