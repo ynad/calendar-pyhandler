@@ -11,7 +11,7 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2023.03.02
+# 2023.03.06
 # https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
@@ -22,7 +22,7 @@ user_conf_json="user_settings.json"
 logging_file="debug.log"
 
 # APP SETTINGS - no need to edit normally
-version_num="0.4.6"
+version_num="0.4.7"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
@@ -100,6 +100,11 @@ def check_time(time) -> Tuple[bool, str]:
     return True, ""
 
 
+# check if first date is after the second one
+def is_after_date(date_i, date_j) -> bool:
+    return datetime.strptime(date_i, "%d/%m/%Y") > datetime.strptime(date_j, "%d/%m/%Y")
+
+
 # check arguments and return error strings
 def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[bool, str]:
 
@@ -123,10 +128,14 @@ def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[boo
         if not date_ok:
             return False, date_err
 
-    # check START date is not after END date (only when provided single dates or date range)
-    if len(start_day_list) == 1 and len(end_day_list) == 1:
-        if start_day_list[0] > end_day_list[0]:
-            err = f"Event start date cannot be after end date: {start_day_list[0]}, {end_day_list[0]}"
+    # check list lenght, must be equal for start and end days
+    if len(start_day_list) != len(end_day_list):
+        return False, "Start and end days count cannot differ!"
+
+    # check START date is not after END date
+    for i, day in enumerate(start_day_list):
+        if is_after_date(start_day_list[i], end_day_list[i]):
+            err = f"Event start date cannot be after end date: {start_day_list[i]}, {end_day_list[i]}"
             return False, err
 
     # check time format
