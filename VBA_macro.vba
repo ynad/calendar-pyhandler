@@ -104,10 +104,6 @@ Sub calAdd_training()
                 ' re-set data to remaining string without hours
                 EventDate = date_hours(0)
             End If
-        Else
-            ' set empty start and end hours
-            start_hr = start_hr & " " & "00:00:00"
-            end_hr = end_hr & " " & "00:00:00"
         End If
 
         ' else check if date range
