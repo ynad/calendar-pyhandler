@@ -1,7 +1,7 @@
 '
 ' Sample VBA macro definitions to be used to integrate Excel spreadsheets.
 '
-' v0.4.5 - 2023.03.01
+' v0.3.7 - 2023.03.06
 ' https://github.com/ynad/caldav-py-handler
 ' info@danielevercelli.it
 '
@@ -20,31 +20,63 @@ Sub calAdd_training()
     End If
     EventName = Application.WorksheetFunction.Trim(EventName)
     
-    ' date format can be: single date "dd/mm/YYYY", range of dates "dd/mm/YYYY - dd/mm/YYYY"
-    ' list of dates, single or ranges, separated by comma "dd/mm/YYYY, dd/mm/YYYY - dd/mm/YYYY"
-    ' the mandatory format is: " - " for ranges, ", " for lists. Whitespaces included.
-    EventDate = ActiveCell.Value
+    ' DATE FORMAT may be: 
+    ' single date "dd/mm/YYYY"
+    ' range of dates "dd/mm/YYYY - dd/mm/YYYY"
+    ' list of dates, single or ranges "dd/mm/YYYY; dd/mm/YYYY - dd/mm/YYYY"
+    '
+    ' HOURS format may be:
+    ' single date with fixed hours "dd/mm/YYYY, hh:mm _ hh:mm"
+    ' range of dates, with first day start hour and last day end hour "dd/mm/YYYY - dd/mm/YYYY, hh:mm _ hh:mm"
+    ' list of dates, with an hours duration each "dd/mm/YYYY, hh:mm _ hh:mm; dd/mm/YYYY - dd/mm/YYYY, hh:mm _ hh:mm"
+    '
+    ' the mandatory separator format are as follow, whitespaces included:
+    ' " - " for range of dates
+    ' "; " for lists
+    ' ", " between day and hour
+    ' " _ " between start and end hours
 
+    ' set current selected cell as event date, then analyze it
+    EventDate = ActiveCell.Value
     ' check if list of dates
-    date_array = Split(EventDate, ", ", -1)
+    date_array = Split(EventDate, "; ", -1)
     If UBound(date_array) > 0 Then
     
         ' cylce over list and check if single or range dates
         Dim j As Long
         For j = 0 To UBound(date_array)
-            ' search last string for comment between "()", if found consider only date
+
+            ' search last string, when j=(len of array), for comment between "()", if found consider only date
             If j = UBound(date_array) Then
                 date_comment = Split(date_array(j), " (", -1)
                 If UBound(date_comment) > 0 Then
-                    data_j = date_comment(0)
+                    date_j = date_comment(0)
                 Else
-                    data_j = date_array(j)
+                    date_j = date_array(j)
                 End If
             Else
-                data_j = date_array(j)
+                date_j = date_array(j)
+            End If
+
+            date_hours = Split(date_j, ", ", 2)
+            ' date with fixed hours
+            If UBound(date_hours) > 0 Then
+                ' search correct format
+                hours = Split(date_hours(1), " _ ", 2)
+                If UBound(hours) > 0 Then
+                    ' set start and end hours
+                    start_hr = start_hr & " " & hours(0)
+                    end_hr = end_hr & " " & hours(1)
+                    ' re-set data to remaining string without hours
+                    date_j = date_hours(0)
+                End If
+            Else
+                ' set empty start and end hours
+                start_hr = start_hr & " " & "00:00"
+                end_hr = end_hr & " " & "00:00"
             End If
         
-            date_range = Split(data_j, " - ", 2)
+            date_range = Split(date_j, " - ", 2)
             ' date range
             If UBound(date_range) > 0 Then
                 start_day = start_day & " " & date_range(0)
@@ -57,7 +89,28 @@ Sub calAdd_training()
         Next j
 
     Else
-    ' else check if date range
+    ' else data range or single date
+
+        ' check if hours were provided
+        date_hours = Split(EventDate, ", ", 2)
+        ' date with fixed hours
+        If UBound(date_hours) > 0 Then
+            ' search correct format
+            hours = Split(date_hours(1), " _ ", 2)
+            If UBound(hours) > 0 Then
+                ' set start and end hours
+                start_hr = start_hr & " " & hours(0)
+                end_hr = end_hr & " " & hours(1)
+                ' re-set data to remaining string without hours
+                EventDate = date_hours(0)
+            End If
+        Else
+            ' set empty start and end hours
+            start_hr = start_hr & " " & "00:00:00"
+            end_hr = end_hr & " " & "00:00:00"
+        End If
+
+        ' else check if date range
         date_array = Split(EventDate, " - ", 2)
         If UBound(date_array) > 0 Then
             start_day = date_array(0)
@@ -137,7 +190,7 @@ Sub calAdd_training()
     'End If
 
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 30" & """")
+    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 30" & """")
 
 End Sub
 
@@ -164,12 +217,28 @@ Sub calAdd_maintenance()
     EventName = Application.WorksheetFunction.Trim(EventName)
     EventDescr = Application.WorksheetFunction.Trim(EventDescr)
     
-    ' start and end day coincide. Hours might be provided too
+    ' set current selected cell as event date, then analyze it
     start_day = ActiveCell.Value
     end_day = ActiveCell.Value
     
+    ' check if hours were provided
+    date_hours = Split(start_day, ", ", 2)
+    ' date with fixed hours
+    If UBound(date_hours) > 0 Then
+        ' search correct format
+        hours = Split(date_hours(1), " _ ", 2)
+        If UBound(hours) > 0 Then
+            ' set start and end hours
+            start_hr = hours(0)
+            end_hr = hours(1)
+            ' re-set data to remaining string without hours
+            start_day = date_hours(0)
+            end_day = date_hours(0)
+        End If
+    End If
+    
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
+    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
     
 End Sub
 
@@ -196,9 +265,25 @@ Sub calAdd_maintenance_invite()
     EventName = Application.WorksheetFunction.Trim(EventName)
     EventDescr = Application.WorksheetFunction.Trim(EventDescr)
     
-    ' start and end day coincide. Hours might be provided too
+    ' set current selected cell as event date, then analyze it
     start_day = ActiveCell.Value
     end_day = ActiveCell.Value
+    
+    ' check if hours were provided
+    date_hours = Split(start_day, ", ", 2)
+    ' date with fixed hours
+    If UBound(date_hours) > 0 Then
+        ' search correct format
+        hours = Split(date_hours(1), " _ ", 2)
+        If UBound(hours) > 0 Then
+            ' set start and end hours
+            start_hr = hours(0)
+            end_hr = hours(1)
+            ' re-set data to remaining string without hours
+            start_day = date_hours(0)
+            end_day = date_hours(0)
+        End If
+    End If
     
     ' invite email(s). Must be separated by spaces
     ' search for correct given key word to identify correct cell with email(s)
@@ -213,7 +298,7 @@ Sub calAdd_maintenance_invite()
     End If
         
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --cal " & """" & "mycalendar" & """" & " --invite " & """" & InviteEmail & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
+    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "mycalendar" & """" & " --invite " & """" & InviteEmail & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
     
 End Sub
 
