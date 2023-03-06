@@ -22,7 +22,7 @@ user_conf_json="user_settings.json"
 logging_file="debug.log"
 
 # APP SETTINGS - no need to edit normally
-version_num="0.4.7"
+version_num="0.4.8"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
@@ -33,6 +33,7 @@ import sys, os, logging
 import json
 import click
 import requests
+import random
 from typing import Dict, List, Tuple
 from requests.auth import HTTPBasicAuth
 from icalendar import Calendar, Event, Alarm, vCalAddress, vText
@@ -57,13 +58,13 @@ def show_syntax(user_settings) -> str:
     err = (
         f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
         "==============================================\n\n"
-        f"Missing or wrong arguments! Syntax:\n{sys.argv}\n"
+        f"Missing or wrong arguments! Syntax:\n\n{sys.argv}\n\n"
         "    --name \"event name\"\n"
         "    --descr \"event description\"\n"
         "    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
         "    --end_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
-        "   [--start_hr HH:MM:SS]\n"
-        "   [--end_hr HH:MM:SS]\n"
+        "   [--start_hr HH:MM [HH:MM [...]]]\n"
+        "   [--end_hr HH:MM [HH:MM [...]]]\n"
         "   [--loc \"event location\"]\n"
         "   [--cal \"calendar to be used\"]\n"
         "   [--invite : email(s) to be invited, separated by space]\n"
@@ -94,7 +95,7 @@ def check_date(date) -> Tuple[bool, str]:
 # check string time format
 def check_time(time) -> Tuple[bool, str]:
     try:
-        datetime.strptime(time, "%H:%M:%S")
+        datetime.strptime(time, "%H:%M")
     except ValueError as err:
         return False, err
     return True, ""
@@ -103,6 +104,11 @@ def check_time(time) -> Tuple[bool, str]:
 # check if first date is after the second one
 def is_after_date(date_i, date_j) -> bool:
     return datetime.strptime(date_i, "%d/%m/%Y") > datetime.strptime(date_j, "%d/%m/%Y")
+
+
+# check if first hour is after the second one
+def is_after_hour(date_i, date_j) -> bool:
+    return datetime.strptime(date_i, "%H:%M") > datetime.strptime(date_j, "%H:%M")
 
 
 # check arguments and return error strings
@@ -138,19 +144,30 @@ def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[boo
             err = f"Event start date cannot be after end date: {start_day_list[i]}, {end_day_list[i]}"
             return False, err
 
-    # check time format
+    # check time format, if any is given
     if start_hr and end_hr:
-        time_ok, time_err = check_time(start_hr)
-        if not time_ok:
-            return False, time_err
 
-        time_ok, time_err = check_time(end_hr)
-        if not time_ok:
-            return False, time_err
+        start_hr_list = start_hr.split()
+        for start_hour in start_hr_list:
+            time_ok, time_err = check_time(start_hour)
+            if not time_ok:
+                return False, time_err
 
-        if start_hr > end_hr:
-            err = f"Event start hour cannot be after end hour: {start_hr}, {end_hr}"
-            return False, err
+        end_hr_list = end_hr.split()
+        for end_hour in end_hr_list:
+            time_ok, time_err = check_time(end_hour)
+            if not time_ok:
+                return False, time_err
+
+        # check list lenght, must be equal for start and end hours as well as for days count
+        if (len(start_hr_list) != len(end_hr_list)) or (len(start_hr_list) != len(start_day_list)):
+            return False, "Start and end hours count cannot differ!"
+
+        # check START hour is not after END hour
+        for i, hour in enumerate(start_hr_list):
+            if is_after_hour(start_hr_list[i], end_hr_list[i]):
+                err = f"Event start hour cannot be after end hour: {start_hr_list[i]}, {end_hr_list[i]}"
+                return False, err
 
     return True, ""
 
@@ -389,9 +406,14 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         input("Press enter to exit.")
         return
 
-    # if more than one start & end days are provided, split dates and repeat all procedure for each one
+    # if more than one start & end days/hours are provided, split them and repeat all procedure for each one
     start_day_list = start_day.split()
     end_day_list = end_day.split()
+
+    if start_hr and end_hr:
+        start_hr_list = start_hr.split()
+        end_hr_list = end_hr.split()
+    
     events_list = []
 
     # cycle by key over list of event dates and to list one event each
@@ -403,16 +425,24 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
             'description' : descr,
             'calendar' : cal if cal else None,
             'location' : loc if loc else user_settings['location_default'],
-            'uid' : (f"{str(datetime.now().timestamp())}_{name}@{user_settings['domain']}").replace(" ", "-")
+            'uid' : (f"{str(datetime.now().timestamp())}_{random.randint(100000, 999999)}_{name}@{user_settings['domain']}").replace(" ", "-")
         }
         logger.debug(f"Building event details with UID: {event_details['uid']}")
 
         # event with fixed hours
         if start_hr and end_hr:
-            event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]} {start_hr}", "%d/%m/%Y %H:%M:%S") } )
-            event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]} {end_hr}", "%d/%m/%Y %H:%M:%S") } )
-            event_details.update( { 'fullday' : False } )
-            logger.debug(f"Fixed hours event")
+            # hours set to 00:00 equals full day event
+            if (start_hr_list[i] == "00:00") and (end_hr_list[i] == "00:00"):
+                event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]}", "%d/%m/%Y").date() } )
+                event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]}", "%d/%m/%Y").date() + timedelta(days=1) } )
+                event_details.update( { 'fullday' : True } )
+                logger.debug(f"Full day event, all-0 hours")
+            else:
+            # set fixed hours
+                event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]} {start_hr_list[i]}", "%d/%m/%Y %H:%M") } )
+                event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]} {end_hr_list[i]}", "%d/%m/%Y %H:%M") } )
+                event_details.update( { 'fullday' : False } )
+                logger.debug(f"Fixed hours event")
         # full day event
         else:
             event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]}", "%d/%m/%Y").date() } )
@@ -444,13 +474,13 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
         logger.debug(f"Wait for user prompt to proceed")
         print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
                "==============================================\n\n"
-              f"The following {len(start_day_list)} event(s) will be added:\n\n")
+              f"The following {len(start_day_list)} event(s) will be added:\n")
 
         # cycle over events list
         for j, event_n in enumerate(events_list):
 
             print(f"Event {j+1}/{len(start_day_list)}\n"
-                  f"-----------\n\n"
+                  f"-----------\n"
                   f"NAME:\t\t{event_n['name']}\n"
                   f"DESCRIPTION:\t{event_n['description']}\n"
                   f"\nSTART DATE:\t{datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
