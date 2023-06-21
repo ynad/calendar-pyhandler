@@ -11,20 +11,19 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2023.03.06
+# 2023.06.21
 # https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
 ###################################################################################################
-# USER SETTINGS - adjust to your environment
-user_conf_json="user_settings.json"
-logging_file="debug.log"
-
-# APP SETTINGS - no need to edit normally
-version_num="0.4.8"
+# APP SETTINGS - do not edit
+version_num="0.4.9"
+update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
+update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
+logging_file="debug.log"
 ###################################################################################################
 
 
@@ -33,7 +32,9 @@ import sys, os, logging
 import json
 import click
 import requests
+import urllib.request
 import random
+import signal
 from typing import Dict, List, Tuple
 from requests.auth import HTTPBasicAuth
 from icalendar import Calendar, Event, Alarm, vCalAddress, vText
@@ -43,6 +44,7 @@ from pathlib import Path
 
 
 # Enable logging
+logging_file = f"{os.path.dirname(__file__)}/{logging_file}"
 logging.basicConfig(
     filename=logging_file,
     filemode='w',
@@ -54,33 +56,70 @@ logger = logging.getLogger(__name__)
 
 
 # show command syntax
-def show_syntax(user_settings) -> str:
-    err = (
-        f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
-        "==============================================\n\n"
-        f"Missing or wrong arguments! Syntax:\n\n{sys.argv}\n\n"
-        "    --name \"event name\"\n"
-        "    --descr \"event description\"\n"
-        "    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
-        "    --end_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
-        "   [--start_hr HH:MM [HH:MM [...]]]\n"
-        "   [--end_hr HH:MM [HH:MM [...]]]\n"
-        "   [--loc \"event location\"]\n"
-        "   [--cal \"calendar to be used\"]\n"
-        "   [--invite : email(s) to be invited, separated by space]\n"
-        "   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]\n"
-        "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
-        "   [--alarm_time : time before the event to set an alarm for]\n"
-        "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
+def print_header(user_settings) -> None:
+    print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
+           "==============================================\n")
+
+
+# show command syntax
+def show_syntax() -> None:
+    print(f"\nMissing or wrong arguments! Syntax:\n\n{sys.argv}\n\n"
+            "    --name \"event name\"\n"
+            "    --descr \"event description\"\n"
+            "    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
+            "    --end_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
+            "   [--start_hr HH:MM [HH:MM [...]]]\n"
+            "   [--end_hr HH:MM [HH:MM [...]]]\n"
+            "   [--loc \"event location\"]\n"
+            "   [--cal \"calendar to be used\"]\n"
+            "   [--invite : email(s) to be invited, separated by space]\n"
+            "   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]\n"
+            "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
+            "   [--alarm_time : time before the event to set an alarm for]\n"
+            "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
+            "   [--config \"path\\to\\config-file.json\"]\n"
     )
-    return err
 
 
 # load user settings from file
-def load_user_settings(user_conf_json) -> dict:
-    logger.info("Loading user json settings from file: " + str(user_conf_json))
-    with open(user_conf_json, 'r') as f:
-        return json.load(f)
+def load_user_settings(user_config) -> dict:
+    if os.path.exists(user_config):
+        logger.info("Loading user settings JSON from file: " + str(user_config))
+        with open(user_config, 'r') as f:
+            return json.load(f)
+    else:
+        logger.error(f"User settings JSON missing: {user_config}")
+        return None
+
+
+# check software updates
+def check_updates() -> None:
+
+    # get latest version number
+    response = requests.get(update_version_url)
+    if (response.status_code == 200):
+        update_version = response.text.split('\n')
+
+        # newer version available on repo
+        if update_version[0] > version_num:
+            logger.debug(f"Current version: {version_num}, found update: {update_version}")
+            print(f"A new version is available: {update_version[0]}, {update_version[1]}\n"
+                   "After the update you may have to re-launch the program.\n"
+                   "Do you want to update now? (Y/N)")
+            run_update = input()
+
+            if run_update.upper() == 'Y':
+                logger.debug("Downloading new version and restarting")
+                print(f"Downloading new version and restarting...")
+                urllib.request.urlretrieve(update_url, __file__)
+                os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
+            else:
+                logger.debug("Update skipped")
+                print("Update skipped.")
+    else:
+        e = "Error occurred while checking available updates."
+        logger.error(f"{e} {response.status_code}, {response.text}")
+        print(e)
 
 
 # check string date format
@@ -324,6 +363,11 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
 
 @click.command()
 @click.option(
+    "--config",
+    type=str,
+    default="user_settings.json"
+)
+@click.option(
     "--name",
     type=str,
     default="default event title"
@@ -392,17 +436,27 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
 
 
 ## Main
-def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt):
+def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt):
 
     # load user settings from json file
-    user_settings = load_user_settings(user_conf_json)
+    user_settings = load_user_settings(config)
+    if not user_settings:
+        print(f"User config file missing: {config}")
+        input("Cannot continue. Press enter to exit.")
+        return
+
+    # print software header
+    print_header(user_settings)
+
+    # check software updates
+    check_updates()
 
     # check command line arguments
     args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
     if not args_ack:
-        syntax = show_syntax(user_settings)
         logger.error(err)
-        print(f"{syntax}\n{err}\n")
+        show_syntax()
+        print(f"{err}\n")
         input("Press enter to exit.")
         return
 
@@ -472,9 +526,7 @@ def main(name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, al
     # wait for user confirmation if enabled. To skip give argument '--prompt n'
     if prompt == "y":
         logger.debug(f"Wait for user prompt to proceed")
-        print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
-               "==============================================\n\n"
-              f"The following {len(start_day_list)} event(s) will be added:\n")
+        print(f"\nThe following {len(start_day_list)} event(s) will be added:\n")
 
         # cycle over events list
         for j, event_n in enumerate(events_list):
