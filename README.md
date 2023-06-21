@@ -43,10 +43,12 @@ caldav-ics-client.py
    [--alarm_format : \"h\" = hours, \"d\" = days]
    [--alarm_time : time before the event to set an alarm for]
    [--prompt "y/n" : wait or skip user confirmation. Default: y]
+   [--config "path\to\config-file.json"]
 ```
 
 ## Requirements
-Install required pip libraries with:
+Required python libraries are listed in file `requirements.txt`.
+Install them with pip:
 ```
 pip install -r requirements.txt
 ```
