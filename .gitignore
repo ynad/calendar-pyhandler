@@ -134,3 +134,5 @@ dmypy.json
 *.ics
 # json files
 *.json
+# txt files
+*.txt
