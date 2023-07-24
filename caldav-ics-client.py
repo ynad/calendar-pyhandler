@@ -42,6 +42,7 @@ from requests.auth import HTTPBasicAuth
 from icalendar import Calendar, Event, Alarm, vCalAddress, vText
 from datetime import datetime, timedelta
 from pathlib import Path
+from packaging import version
 
 
 
@@ -122,7 +123,7 @@ def check_updates() -> None:
         update_version = response.text.split('\n')
 
         # newer version available on repo
-        if update_version[0] > version_num:
+        if version.parse(update_version[0]) > version.parse(version_num):
             logger.debug(f"Current version: {version_num}, found update: {update_version}")
             print(f"A new version is available: {update_version[0]}, {update_version[1]}\n"
                    "After the update you may have to re-launch the program.\n"
@@ -137,8 +138,10 @@ def check_updates() -> None:
             else:
                 logger.debug("Update skipped")
                 print("Update skipped.")
+        else:
+            logger.debug(f"No updates available. Current version: {version_num}, online version: {update_version[0]}")
     else:
-        e = "Error occurred while checking available updates."
+        e = "(!) Error occurred while checking available updates."
         logger.error(f"{e} {response.status_code}, {response.text}")
         print(e)
 
