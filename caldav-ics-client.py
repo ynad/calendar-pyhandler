@@ -18,13 +18,15 @@
 
 ###################################################################################################
 # APP SETTINGS - do not edit
-version_num="0.4.10"
+version_num="0.4.11"
+dev_email="info@danielevercelli.it"
 update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
+requirements_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/requirements.txt"
 update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 logging_file="debug.log"
-dev_email="info@danielevercelli.it"
+pip_json="pip.json"
 ###################################################################################################
 
 
@@ -56,6 +58,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# requirements local file
+requirements_file=f"{os.path.dirname(__file__)}/requirements.txt"
+
 
 
 # show command syntax
@@ -67,6 +72,7 @@ def print_header(user_settings) -> None:
 # show command syntax
 def show_syntax() -> None:
     print(f"\nMissing or wrong arguments! Syntax:\n\n{sys.argv}\n\n"
+            "Event and calendar settings:\n"
             "    --name \"event name\"\n"
             "    --descr \"event description\"\n"
             "    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]\n"
@@ -74,14 +80,18 @@ def show_syntax() -> None:
             "   [--start_hr HH:MM [HH:MM [...]]]\n"
             "   [--end_hr HH:MM [HH:MM [...]]]\n"
             "   [--loc \"event location\"]\n"
-            "   [--cal \"calendar to be used\"]\n"
+            "   [--cal \"calendar to be used\". Default: \"personal\"]\n"
             "   [--invite : email(s) to be invited, separated by space]\n"
-            "   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]\n"
+            "\nAlarm settings, all 3 parameters must be set or none is considered:\n"
+            "   [--alarm_type : \"DISPLAY\" or \"EMAIL\". Alarm to be set on event. Default: none]\n"
             "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
-            "   [--alarm_time : time before the event to set an alarm for]\n"
+            "   [--alarm_time : time before the event to set an alarm for, in given format]\n"
+            "\nApp behavior settings:\n"
+            "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
             "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
             "   [--report \"y/n\" : send report log to developer. Default: y]\n"
-            "   [--config \"path\\to\\config-file.json\"]\n"
+            "   [--update \"y/n\" : Auto-check software updates. Default: y]\n"
+            "   [--dependencies \"y/n\" : Auto-check updated dependencies. Default: y]\n"
     )
 
 
@@ -114,6 +124,81 @@ def send_report(user_settings) -> None:
         logger.warning(f"No report path in user_settings, cannot send report")
 
 
+def check_dependencies() -> bool:
+    # get updated requirements, else use local if exist
+    get_requirements()
+    if os.path.exists(requirements_file):
+        # get os pip package list as json
+        logger.debug(f"Save local pip list on file: {pip_json}")
+        try:
+            os.system(f"pip list --format json > {pip_json}")
+            with open(pip_json, 'r') as fp:
+                pip_list = json.load(fp)
+            os.remove(pip_json)
+        except Exception as e:
+            logger.error(f"Error reading pip list JSON from file {pip_json}: {e}")
+            print("(!) Error reading software state list.\n")
+            return False
+
+        logger.debug(f"Read requirements from file: {requirements_file}")
+        try:
+            with open(requirements_file, 'r') as fp:
+                requirements = fp.readlines()
+        except Exception as e:
+            logger.error(f"Error reading requirements from file: {requirements_file}")
+            print("(!) Error reading software requirements.\n")
+            return False
+
+        # iterate over package list and search for my requirements    
+        for pack in pip_list:
+            for req in requirements:
+                if pack['name'] == req.split('\n')[0]:
+                    requirements.remove(req)
+
+        # if there are missing requirements install them
+        if len(requirements) > 0:
+            return install_requirements(requirements)
+        else:
+            logger.debug(f"All requirements satisfied")
+            return True
+
+    else:
+        logger.warning(f"Requirements not found on path: {requirements_file}")
+        print("(!) Error checking software requirements.\n")
+        return False
+
+
+def get_requirements() -> bool:
+    try:
+        logger.debug(f"Get updated requirements from url: {requirements_url}, to file: {requirements_file}")
+        urllib.request.urlretrieve(requirements_url, requirements_file)
+        return True
+    except Exception as e:
+        logger.warning(f"Error downloading python requirements from url {requirements_url}: {e}")
+        print("(!) Error occurred while downloading software requirements.\n")
+        return False
+
+
+def install_requirements(requirements) -> bool:
+    print(f"New software dependencies are available:")
+    for req in requirements:
+        req = req.split('\n')[0]
+        print(f"{req} ")
+    print( "\nATTENTION: new python packages will be installed. If skipped, the software might not work after an update.\n"
+           "Do you want to install them now? (Y/N)"
+           )
+    run_update = input()
+
+    if run_update.upper() == 'Y':
+        logger.debug(f"Installing missing requirements from file: {requirements_file}")
+        print(f"Downloading new python pip packages...\n")
+        return os.system(f"pip install -r {requirements_file}")
+    else:
+        logger.debug("Requirements update skipped")
+        print("Requirements update skipped.\n")
+        return False
+
+
 # check software updates
 def check_updates() -> None:
 
@@ -141,8 +226,8 @@ def check_updates() -> None:
         else:
             logger.debug(f"No updates available. Current version: {version_num}, online version: {update_version[0]}")
     else:
-        e = "(!) Error occurred while checking available updates."
         logger.error(f"{e} {response.status_code}, {response.text}")
+        e = "(!) Error occurred while checking available updates."
         print(e)
 
 
@@ -463,11 +548,21 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     type=str,
     default="y"
 )
+@click.option(
+    "--update",
+    type=str,
+    default="y"
+)
+@click.option(
+    "--dependencies",
+    type=str,
+    default="y"
+)
 
 
 
 ## Main
-def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, report):
+def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, report, update, dependencies):
 
     # load user settings from json file
     user_settings = load_user_settings(config)
@@ -481,7 +576,12 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
     print_header(user_settings)
 
     # check software updates
-    check_updates()
+    if update == "y":
+        check_updates()
+
+    # check python dependencies
+    if dependencies == "y":
+        check_dependencies()
 
     # check command line arguments
     args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
