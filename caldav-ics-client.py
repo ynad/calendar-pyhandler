@@ -11,24 +11,26 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2023.06.21
+# 2023.07.24
 # https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
 ###################################################################################################
 # APP SETTINGS - do not edit
-version_num="0.4.9"
+version_num="0.4.10"
 update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
 update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
 user_agent=f"caldav-ics-client/{version_num}"
 ics_file="tmp_caldav-ics-event.ics"
 logging_file="debug.log"
+dev_email="info@danielevercelli.it"
 ###################################################################################################
 
 
 
-import sys, os, logging
+import sys, os, shutil
+import logging
 import json
 import click
 import requests
@@ -77,19 +79,38 @@ def show_syntax() -> None:
             "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
             "   [--alarm_time : time before the event to set an alarm for]\n"
             "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
+            "   [--report \"y/n\" : send report log to developer. Default: y]\n"
             "   [--config \"path\\to\\config-file.json\"]\n"
     )
 
 
 # load user settings from file
 def load_user_settings(user_config) -> dict:
+    logger.info(f"Caldav ICS CLIent - v{version_num}")
     if os.path.exists(user_config):
         logger.info("Loading user settings JSON from file: " + str(user_config))
         with open(user_config, 'r') as f:
-            return json.load(f)
+            user_settings = json.load(f)
+        logger.info(f"Running instance for: {user_settings['domain']}, user: {user_settings['username']}, calendar: {user_settings['calendar_default']}")
+        return user_settings
     else:
         logger.error(f"User settings JSON missing: {user_config}")
         return None
+
+
+# send report of usage to developer
+def send_report(user_settings) -> None:
+    # copy log to report dir, if path is provided in user_settings
+    if 'report' in user_settings:
+        try:
+            log_report = f"{user_settings['report']}//caldav-ics-client_debug_{str(datetime.now().timestamp())}.log"
+            shutil.copyfile(logging_file, log_report)
+            logger.debug(f"Report sent, log copied to {log_report}")
+
+        except Exception as e:
+            logger.error(f"Cannot copy debug log file from: {logging_file} to: {log_report}, error: {e}")
+    else:
+        logger.warning(f"No report path in user_settings, cannot send report")
 
 
 # check software updates
@@ -247,7 +268,7 @@ def create_ics(user_settings, event_details) -> None:
     # add organizer
     logger.debug(f"ICS: organizer: {user_settings['organizer_email']}")
     organizer = vCalAddress(f"MAILTO:{user_settings['organizer_email']}")
-    organizer.params['name'] = vText(user_settings['organizer_name'])
+    organizer.params['CN'] = vText(user_settings['organizer_name'])
     organizer.params['role'] = vText(user_settings['organizer_role'])
     myevent['organizer'] = organizer
 
@@ -257,8 +278,10 @@ def create_ics(user_settings, event_details) -> None:
         for i in invitees:
             logger.debug(f"ICS: adding invite for: {i}")
             attendee = vCalAddress(f"MAILTO:{i}")
-            attendee.params['name'] = vText(i)
+            attendee.params['CN'] = vText(i)
             attendee.params['role'] = vText('REQ-PARTICIPANT')
+            attendee.params['PARTSTAT'] = vText('NEEDS-ACTION')
+            attendee.params['RSVP'] = vText('TRUE')
             myevent.add('attendee', attendee, encode=0)
 
     # add an alarm for the event
@@ -293,7 +316,7 @@ def create_ics(user_settings, event_details) -> None:
     mycal.add_component(myevent)
 
     # write event to ICS file
-    logger.info(f"ICS: write to file {ics_file}")
+    logger.debug(f"ICS: write to file {ics_file}")
     with open(ics_file, 'wb') as f:
         f.write(mycal.to_ical())
 
@@ -309,7 +332,7 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
         return
 
     # read ICS ifle
-    logger.info(f"webdav: read ics from file {ics_file}")
+    logger.debug(f"webdav: read ics from file {ics_file}")
     with open(ics_file, 'rb') as f:
         data = f.read()
 
@@ -355,7 +378,7 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     finally:
         # rm tmp ics files
         if os.path.exists(ics_file):
-            logger.info(f"webdav: remove ics file {ics_file}")
+            logger.debug(f"webdav: remove ics file {ics_file}")
             os.remove(ics_file)
         #pass
 
@@ -432,15 +455,21 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     type=str,
     default="y"
 )
+@click.option(
+    "--report",
+    type=str,
+    default="y"
+)
 
 
 
 ## Main
-def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt):
+def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, report):
 
     # load user settings from json file
     user_settings = load_user_settings(config)
     if not user_settings:
+        logger.error(f"User config file missing: {config}")
         print(f"User config file missing: {config}")
         input("Cannot continue. Press enter to exit.")
         return
@@ -454,7 +483,7 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
     # check command line arguments
     args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
     if not args_ack:
-        logger.error(err)
+        logger.warning(err)
         show_syntax()
         print(f"{err}\n")
         input("Press enter to exit.")
@@ -555,6 +584,10 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
 
         # upload it to caldav server
         webdav_put_ics(user_settings, event_n['calendar'], event_n['uid'])
+
+    # send log report
+    if report == "y":
+        send_report(user_settings)
 
     # final prompt
     if prompt == "y":
