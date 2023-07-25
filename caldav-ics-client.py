@@ -45,7 +45,7 @@ from requests.auth import HTTPBasicAuth
 from icalendar import Calendar, Event, Alarm, vCalAddress, vText
 from datetime import datetime, timedelta
 from pathlib import Path
-from packaging import version
+#from packaging import version
 
 
 
@@ -214,7 +214,8 @@ def check_updates() -> None:
         update_version = response.text.split('\n')
 
         # newer version available on repo
-        if version.parse(update_version[0]) > version.parse(version_num):
+        if (update_version[0]) > (version_num):
+        #if version.parse(update_version[0]) > version.parse(version_num):
             logger.debug(f"Current version: {version_num}, found update: {update_version}")
             print(f"A new version is available: {update_version[0]}, {update_version[1]}\n"
                    "After the update you may have to re-launch the program.\n"
@@ -581,13 +582,13 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
     # print software header
     print_header(user_settings)
 
-    # check software updates
-    if update == "y":
-        check_updates()
-
     # check python dependencies
     if dependencies == "y":
         check_dependencies()
+
+    # check software updates
+    if update == "y":
+        check_updates()
 
     # check command line arguments
     args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
