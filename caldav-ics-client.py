@@ -17,16 +17,17 @@
 #
 
 ###################################################################################################
-# APP SETTINGS - do not edit
-version_num="0.4.11"
+# APP SETTINGS - DO NOT EDIT
+version_num="0.5.0"
 dev_email="info@danielevercelli.it"
 update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
-requirements_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/requirements.txt"
 update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
+requirements_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/requirements.txt"
 user_agent=f"caldav-ics-client/{version_num}"
-ics_file="tmp_caldav-ics-event.ics"
 logging_file="debug.log"
+requirements_file="requirements.txt"
 pip_json="pip.json"
+ics_file="tmp_caldav-ics-event.ics"
 ###################################################################################################
 
 
@@ -58,8 +59,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# requirements local file
-requirements_file=f"{os.path.dirname(__file__)}/requirements.txt"
+# set filenames on local path
+# requirements
+requirements_file=f"{os.path.dirname(__file__)}/{requirements_file}"
+# pip list
+pip_json=f"{os.path.dirname(__file__)}/{pip_json}"
+# ics tmp file
+ics_file=f"{os.path.dirname(__file__)}/{ics_file}"
 
 
 
