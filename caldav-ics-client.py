@@ -18,7 +18,7 @@
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-version_num="0.5.0"
+version_num="0.5.1"
 dev_email="info@danielevercelli.it"
 update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
 update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
