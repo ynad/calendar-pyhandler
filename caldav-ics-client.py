@@ -95,7 +95,7 @@ def show_syntax() -> None:
             "\nApp behavior settings:\n"
             "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
             "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
-            "   [--report \"y/n\" : send report log to developer. Default: y]\n"
+            "   [--report \"y/n\" : save report log for developer. Default: y]\n"
             "   [--update \"y/n\" : Auto-check software updates. Default: y]\n"
             "   [--dependencies \"y/n\" : Auto-check updated dependencies. Default: y]\n"
     )
@@ -137,7 +137,7 @@ def check_dependencies() -> bool:
         # get os pip package list as json
         logger.debug(f"Save local pip list on file: {pip_json}")
         try:
-            os.system(f"pip list --format json > {pip_json}")
+            os.system(f"pip list --disable-pip-version-check --format json > {pip_json}")
             with open(pip_json, 'r') as fp:
                 pip_list = json.load(fp)
             os.remove(pip_json)
@@ -198,7 +198,7 @@ def install_requirements(requirements) -> bool:
     if run_update.upper() == 'Y':
         logger.debug(f"Installing missing requirements from file: {requirements_file}")
         print(f"Downloading new python pip packages...\n")
-        return os.system(f"pip install -r {requirements_file}")
+        return os.system(f"pip install --disable-pip-version-check -r {requirements_file}")
     else:
         logger.debug("Requirements update skipped")
         print("Requirements update skipped.\n")
