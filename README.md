@@ -15,7 +15,8 @@ User settings data must be formatted in JSON as follow, by default the app searc
     "organizer_name" : "Jane Doe",
     "organizer_role" : "IT",
     "organizer_email" : "info@example.com",
-    "location_default" : "Main Office"
+    "location_default" : "Main Office",
+    "report" : "path/to/reports-folder"
 }
 ```
 `USER SETTINGS` section in the code might need to be adjusted to your working path.
@@ -39,11 +40,13 @@ caldav-ics-client.py
    [--loc "event location"]
    [--cal "calendar to be used"]
    [--invite "email(s) to be invited, separated by space"]
-   [--alarm_type : alarm to be set on event: \"DISPLAY\" or \"EMAIL\". Default: none]
-   [--alarm_format : \"h\" = hours, \"d\" = days]
+   [--alarm_type : alarm to be set on event: "DISPLAY" or "EMAIL". Default: none]
+   [--alarm_format : "h" = hours, "d" = days]
    [--alarm_time : time before the event to set an alarm for]
+   [--config "path/to/config-file.json. Default: "user_settings.json"]
    [--prompt "y/n" : wait or skip user confirmation. Default: y]
-   [--config "path\to\config-file.json"]
+   [--report "y/n" : save report log for developer. Default: y]\n"
+   [--update "y/n" : Auto-check software updates. Default: y]\n"
 ```
 
 ## Requirements
