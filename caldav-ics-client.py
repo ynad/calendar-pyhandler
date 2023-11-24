@@ -11,14 +11,14 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2023.07.24
+# 2023.11.24
 # https://github.com/ynad/caldav-py-handler
 # info@danielevercelli.it
 #
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-version_num="0.5.2"
+version_num="0.5.3"
 dev_email="info@danielevercelli.it"
 update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
 update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
@@ -97,7 +97,6 @@ def show_syntax() -> None:
             "   [--prompt \"y/n\" : wait or skip user confirmation. Default: y]\n"
             "   [--report \"y/n\" : save report log for developer. Default: y]\n"
             "   [--update \"y/n\" : Auto-check software updates. Default: y]\n"
-            "   [--dependencies \"y/n\" : Auto-check updated dependencies. Default: y]\n"
     )
 
 
@@ -131,47 +130,53 @@ def send_report(user_settings) -> None:
 
 
 def check_dependencies() -> bool:
-    # get updated requirements, else use local if exist
-    get_requirements()
-    if os.path.exists(requirements_file):
-        # get os pip package list as json
-        logger.debug(f"Save local pip list on file: {pip_json}")
-        try:
-            os.system(f"pip list --disable-pip-version-check --format json > {pip_json}")
-            with open(pip_json, 'r') as fp:
-                pip_list = json.load(fp)
-            os.remove(pip_json)
-        except Exception as e:
-            logger.error(f"Error reading pip list JSON from file {pip_json}: {e}")
-            print("(!) Error reading software state list.\n")
-            return False
+    # run dep check only if an update_version is found
+    if update_version:
 
-        logger.debug(f"Read requirements from file: {requirements_file}")
-        try:
-            with open(requirements_file, 'r') as fp:
-                requirements = fp.readlines()
-        except Exception as e:
-            logger.error(f"Error reading requirements from file: {requirements_file}")
-            print("(!) Error reading software requirements.\n")
-            return False
+        # get updated requirements, else use local if exist
+        get_requirements()
+        if os.path.exists(requirements_file):
+            # get os pip package list as json
+            logger.debug(f"Save local pip list on file: {pip_json}")
+            try:
+                os.system(f"pip list --disable-pip-version-check --format json > {pip_json}")
+                with open(pip_json, 'r') as fp:
+                    pip_list = json.load(fp)
+                os.remove(pip_json)
+            except Exception as e:
+                logger.error(f"Error reading pip list JSON from file {pip_json}: {e}")
+                print("(!) Error reading software state list.\n")
+                return False
 
-        # iterate over package list and search for my requirements    
-        for pack in pip_list:
-            for req in requirements:
-                if pack['name'] == req.split('\n')[0]:
-                    requirements.remove(req)
+            logger.debug(f"Read requirements from file: {requirements_file}")
+            try:
+                with open(requirements_file, 'r') as fp:
+                    requirements = fp.readlines()
+            except Exception as e:
+                logger.error(f"Error reading requirements from file: {requirements_file}")
+                print("(!) Error reading software requirements.\n")
+                return False
 
-        # if there are missing requirements install them
-        if len(requirements) > 0:
-            return install_requirements(requirements)
+            # iterate over package list and search for my requirements    
+            for pack in pip_list:
+                for req in requirements:
+                    if pack['name'] == req.split('\n')[0]:
+                        requirements.remove(req)
+
+            # if there are missing requirements install them
+            if len(requirements) > 0:
+                return install_requirements(requirements)
+            else:
+                logger.debug(f"All requirements satisfied")
+                return True
+
         else:
-            logger.debug(f"All requirements satisfied")
-            return True
+            logger.warning(f"Requirements not found on path: {requirements_file}")
+            print("(!) Error checking software requirements.\n")
+            return False
 
     else:
-        logger.warning(f"Requirements not found on path: {requirements_file}")
-        print("(!) Error checking software requirements.\n")
-        return False
+        logger.info("check_dependencies skipped, no updates were found")
 
 
 def get_requirements() -> bool:
@@ -206,36 +211,48 @@ def install_requirements(requirements) -> bool:
 
 
 # check software updates
-def check_updates() -> None:
-
+def check_updates() -> Tuple[str, str]:
     # get latest version number
     response = requests.get(update_version_url)
     if (response.status_code == 200):
-        update_version = response.text.split('\n')
+        update_info = response.text.split('\n')
 
         # newer version available on repo
-        if (update_version[0]) > (version_num):
-        #if version.parse(update_version[0]) > version.parse(version_num):
-            logger.debug(f"Current version: {version_num}, found update: {update_version}")
-            print(f"A new version is available: {update_version[0]}, {update_version[1]}\n"
-                   "After the update you may have to re-launch the program.\n"
-                   "Do you want to update now? (Y/N)")
-            run_update = input()
+        if (update_info[0]) > (version_num):
+        #if version.parse(update_info[0]) > version.parse(version_num):
+            logger.debug(f"Current version: {version_num}, found update: {update_info}")
+            return update_info[0], update_info[1]
 
-            if run_update.upper() == 'Y':
-                logger.debug("Downloading new version and restarting")
-                print(f"Downloading new version and restarting...")
-                urllib.request.urlretrieve(update_url, __file__)
-                os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
-            else:
-                logger.debug("Update skipped")
-                print("Update skipped.")
         else:
-            logger.debug(f"No updates available. Current version: {version_num}, online version: {update_version[0]}")
+            logger.debug(f"No updates available. Current version: {version_num}, online version: {update_info}")
+            return None, None
     else:
         logger.error(f"{e} {response.status_code}, {response.text}")
         e = "(!) Error occurred while checking available updates."
         print(e)
+        return None, None
+
+
+# self update app
+def self_update() -> None:
+    # if a newer version is available on repo
+    if update_version:
+        print(f"A new version is available: {update_version}, {update_date}\n"
+               "After the update you may have to re-launch the program.\n"
+               "Do you want to update now? (Y/N)")
+        run_update = input()
+
+        if run_update.upper() == 'Y':
+            logger.debug("Downloading new version and restarting")
+            print(f"Downloading new version and restarting...")
+            urllib.request.urlretrieve(update_url, __file__)
+            os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
+        else:
+            logger.debug("Update skipped")
+            print("Update skipped.")
+
+    else:
+        logger.debug(f"self_update nothing to do")
 
 
 # check string date format
@@ -268,7 +285,6 @@ def is_after_hour(date_i, date_j) -> bool:
 
 # check arguments and return error strings
 def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[bool, str]:
-
     logger.debug(f"Running args check")
 
     # start and end day are mandatory
@@ -329,7 +345,6 @@ def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[boo
 
 # create ICS file with provided event details
 def create_ics(user_settings, event_details) -> None:
-
     # init calendar
     logger.debug(f"ICS: create calendar")
     mycal = Calendar()
@@ -418,7 +433,6 @@ def create_ics(user_settings, event_details) -> None:
 
 # make PUT request to upload ICS event file to given calendar
 def webdav_put_ics(user_settings, calendar, event_id) -> None:
-
     # check ICS existance
     if not os.path.exists(ics_file):
         err = f"ERROR: missing ICS file {ics_file}, can't continue"
@@ -560,16 +574,14 @@ def webdav_put_ics(user_settings, calendar, event_id) -> None:
     type=str,
     default="y"
 )
-@click.option(
-    "--dependencies",
-    type=str,
-    default="y"
-)
 
 
 
 ## Main
-def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, report, update, dependencies):
+def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, report, update):
+
+    global update_version
+    global update_date
 
     # load user settings from json file
     user_settings = load_user_settings(config)
@@ -582,13 +594,14 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
     # print software header
     print_header(user_settings)
 
-    # check python dependencies
-    if dependencies == "y":
-        check_dependencies()
-
     # check software updates
     if update == "y":
-        check_updates()
+        update_version, update_date = check_updates()
+
+        # check dependecies update
+        check_dependencies()
+        # run self update
+        self_update()
 
     # check command line arguments
     args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
