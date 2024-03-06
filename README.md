@@ -43,10 +43,10 @@ caldav-ics-client.py
    [--alarm_type : alarm to be set on event: "DISPLAY" or "EMAIL". Default: none]
    [--alarm_format : "h" = hours, "d" = days]
    [--alarm_time : time before the event to set an alarm for]
-   [--config "path/to/config-file.json. Default: "user_settings.json"]
-   [--prompt "y/n" : wait or skip user confirmation. Default: y]
-   [--report "y/n" : save report log for developer. Default: y]\n"
-   [--update "y/n" : Auto-check software updates. Default: y]\n"
+   [--config "path/to/config_file.json. Default: "user_settings.json"]
+   [--prompt : wait for user confirmation]
+   [--no_report : skip report log copy for developer]\n"
+   [--no_update : skip software updates auto-check]\n"
 ```
 
 ## Requirements

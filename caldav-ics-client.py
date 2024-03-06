@@ -110,8 +110,8 @@ def show_syntax() -> None:
             "\nApp behavior settings:\n"
             "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
             "   [--prompt : wait for user confirmation]\n"
-            "   [--report : skip report log copy for developer]\n"
-            "   [--update : skip software updates auto-check]\n"
+            "   [--no_report : skip report log copy for developer]\n"
+            "   [--no_update : skip software updates auto-check]\n"
     )
 
 
