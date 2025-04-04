@@ -2,3 +2,4 @@ requests
 icalendar
 click
 packaging
+msal
