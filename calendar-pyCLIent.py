@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 #
-## caldav-ics-client.py
+## calendar-pyCLIent.py
 # Receives event details from arguments, parse them, create an ICS event, upload it via webdav PUT request.
 # Must provide JSON formatted file with: User-Agent, webdav server url, authentication, etc.
 # Based on a NextCloud environment.
@@ -11,28 +11,31 @@
 ## License
 # Released under GPL-3.0 license.
 #
-# 2024.03.06
-# https://github.com/ynad/caldav-py-handler
+# 2025.04.04
+# https://github.com/ynad/calendar-pyhandler
 # info@danielevercelli.it
 #
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-version_num="0.5.4"
-dev_email="info@danielevercelli.it"
-update_version_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/VERSION"
-update_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/caldav-ics-client.py"
-requirements_url="https://raw.githubusercontent.com/ynad/caldav-py-handler/main/requirements.txt"
-user_agent=f"caldav-ics-client/{version_num}"
-logging_file="debug.log"
-requirements_file="requirements.txt"
-pip_json="pip.json"
-ics_file="tmp_caldav-ics-event.ics"
+VERSION_NUM = "0.6.0"
+DEV_EMAIL = "info@danielevercelli.it"
+PROD_NAME = "calendar-pyCLIent"
+PROD_URL = "github.com/ynad/calendar-pyhandler"
+update_version_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/VERSION"
+update_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/calendar-pyCLIent-client.py"
+requirements_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/requirements.txt"
+logging_file = "debug.log"
+requirements_file = "requirements.txt"
+pip_json = "pip.json"
+ics_file = "tmp_calendar-pyhandler-event.ics"
 ###################################################################################################
 
 
 
-import sys, os, shutil
+import sys
+import os 
+import shutil
 import logging
 import json
 import click
@@ -40,14 +43,16 @@ import requests
 import urllib.request
 import random
 import signal
-from typing import Dict, List, Tuple
-from requests.auth import HTTPBasicAuth
-from icalendar import Calendar, Event, Alarm, vCalAddress, vText
 from datetime import datetime, timedelta
 from pathlib import Path
+
 # GUI libs
-import tkinter
-import tkinter.messagebox
+import tkinter as tk
+from tkinter import scrolledtext, messagebox, Toplevel
+
+# internal libs
+from agents.caldavAgent import CaldavAgent
+from agents.mgraphAgent import MGraphAgent
 
 
 
@@ -71,28 +76,91 @@ ics_file=f"{os.path.dirname(__file__)}/{ics_file}"
 
 
 
-def msgbox(msg_text, msg_type='info') -> None:
-    window = tkinter.Tk()
+def message_box(msg_text: str, msg_type: str = 'info') -> None:
+    window = tk.Tk()
     window.wm_withdraw()
 
     if msg_type == 'error':
-        tkinter.messagebox.showerror(title="Error", message=msg_text)
+        messagebox.showerror(title=f"Error - {string_header(short=True)}", message=msg_text)
+    elif msg_type == 'warning':
+        messagebox.showwarning(title=f"Warning - {string_header(short=True)}", message=msg_text)
     else:
-        tkinter.messagebox.showinfo(title="Information", message=msg_text)
+        messagebox.showinfo(title=f"Information - {string_header(short=True)}", message=msg_text)
 
     window.destroy()
     return None
 
 
-# show command syntax
-def print_header(user_settings) -> None:
-    print(f"\nCaldav ICS CLIent - v{version_num} - {user_settings['domain']}\n"
-           "==============================================\n")
+def confirm_box(output_tk: str, events_list: list) -> None:
+    # Create main window
+    root = tk.Tk()
+    root.title(string_header(terminal=False))
+    root.geometry("900x600")
+
+    # Label for instruction or title
+    label = tk.Label(root, text=f"\nThe following event(s) will be created:\n")
+    label.pack(pady=10)
+
+    # ScrolledText widget for displaying the text
+    text = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=70, height=20)
+    text.pack(pady=10)
+
+    # Sample text for demonstration (between 15 and 50 lines)
+    text.insert(tk.END, output_tk)
+    text.configure(state='disabled')  # Make the text read-only
+
+    # Button frame to organize Confirm and Cancel buttons
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=20)
+
+    # Confirm and Cancel buttons
+    confirm_button = tk.Button(button_frame, text="OK", command=lambda: [create_events(events_list), root.destroy(), root.quit()])
+    cancel_button = tk.Button(button_frame, text="Cancel", command=lambda: [root.destroy(), root.quit()])
+
+    confirm_button.pack(side=tk.LEFT, padx=10)
+    cancel_button.pack(side=tk.RIGHT, padx=10)
+
+    # Run the application
+    root.mainloop()
+
+
+# determine user backend mode and create events accordingly
+def create_events(events_list: list) -> bool:
+    logger.info(f"create_events, mode: {user_settings['mode']}")
+
+    # CalDav - WebDav
+    if user_settings['mode'] == 'caldav':
+        agent = CaldavAgent(user_settings, ics_file=ics_file)
+
+    # Microsoft Graph REST API
+    elif user_settings['mode'] == 'microsoft_graph':
+        agent = MGraphAgent(user_settings)
+
+    else:
+        logger.error(f"invalid client mode: {user_settings['mode']}, cannot continue")
+        return False
+
+    for event_n in events_list:
+        res, msg = agent.create_event(event_n)
+        if res:
+            message_box(msg, msg_type='info')
+        else:
+            message_box(msg, msg_type='error')
 
 
 # show command syntax
-def show_syntax() -> None:
-    print(f"Parameters given:\n\n{sys.argv}\n\n\nSyntax:\n\n"
+def string_header(terminal: bool = False, short: bool = False) -> str:
+    header = f"Calendar pyCLIent" 
+    if not short:
+        header +=  f" - v{VERSION_NUM} - {user_settings['domain']}"
+    if terminal:
+        header += "\n==============================================\n"
+    return header
+
+
+# show command syntax
+def show_syntax() -> str:
+    return(f"Parameters given:\n\n{sys.argv}\n\n\nSyntax:\n\n"
             "Event and calendar settings:\n"
             "    --name \"event name\"\n"
             "    --descr \"event description\"\n"
@@ -109,20 +177,20 @@ def show_syntax() -> None:
             "   [--alarm_time : time before the event to set an alarm for, in given format]\n"
             "\nApp behavior settings:\n"
             "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
-            "   [--prompt : wait for user confirmation]\n"
-            "   [--no_report : skip report log copy for developer]\n"
-            "   [--no_update : skip software updates auto-check]\n"
+            "   [--noprompt : skip user confirmation]\n"
+            "   [--noreport : skip report log copy for developer]\n"
+            "   [--noupdate : skip software updates auto-check]\n"
     )
 
 
 # load user settings from file
-def load_user_settings(user_config) -> dict:
-    logger.info(f"Caldav ICS CLIent - v{version_num}")
+def load_user_settings(user_config: str) -> dict:
+    logger.info(f"Calendar pyCLIent - v{VERSION_NUM}")
     if os.path.exists(user_config):
         logger.info("Loading user settings JSON from file: " + str(user_config))
         with open(user_config, 'r') as f:
             user_settings = json.load(f)
-        logger.info(f"Running instance for: {user_settings['domain']}, user: {user_settings['username']}, calendar: {user_settings['calendar_default']}")
+        logger.info(f"Running instance for: {user_settings['domain']}, user: {user_settings['username']}, calendar: {user_settings['calendar'] if 'calendar' in user_settings else 'None'}")
         return user_settings
     else:
         logger.error(f"User settings JSON missing: {user_config}")
@@ -130,13 +198,13 @@ def load_user_settings(user_config) -> dict:
 
 
 # send report of usage to developer
-def send_report(user_settings) -> None:
+def send_report() -> None:
     # copy log to report dir, if path is provided in user_settings
     if 'report' in user_settings:
         try:
-            log_report = f"{user_settings['report']}//caldav-ics-client_debug_{str(datetime.now().timestamp())}.log"
+            log_report = f"{user_settings['report']}//calendar-pyCLIent_debug_{str(datetime.now().timestamp())}.log"
             shutil.copyfile(logging_file, log_report)
-            logger.debug(f"Report sent, log copied to {log_report}")
+            logger.info(f"Report sent, log copied to {log_report}")
 
         except Exception as e:
             logger.error(f"Cannot copy debug log file from: {logging_file} to: {log_report}, error: {e}")
@@ -152,7 +220,7 @@ def check_dependencies() -> bool:
         get_requirements()
         if os.path.exists(requirements_file):
             # get os pip package list as json
-            logger.debug(f"Save local pip list on file: {pip_json}")
+            logger.info(f"Save local pip list on file: {pip_json}")
             try:
                 os.system(f"pip list --disable-pip-version-check --format json > {pip_json}")
                 with open(pip_json, 'r') as fp:
@@ -163,7 +231,7 @@ def check_dependencies() -> bool:
                 print("(!) Error reading software state list.\n")
                 return False
 
-            logger.debug(f"Read requirements from file: {requirements_file}")
+            logger.info(f"Read requirements from file: {requirements_file}")
             try:
                 with open(requirements_file, 'r') as fp:
                     requirements = fp.readlines()
@@ -182,7 +250,7 @@ def check_dependencies() -> bool:
             if len(requirements) > 0:
                 return install_requirements(requirements)
             else:
-                logger.debug(f"All requirements satisfied")
+                logger.info(f"All requirements satisfied")
                 return True
 
         else:
@@ -191,21 +259,22 @@ def check_dependencies() -> bool:
             return False
 
     else:
-        logger.info("check_dependencies skipped, no updates were found")
+        logger.info("check_dependencies skipped")
 
 
 def get_requirements() -> bool:
     try:
-        logger.debug(f"Get updated requirements from url: {requirements_url}, to file: {requirements_file}")
+        logger.info(f"Get updated requirements from url: {requirements_url}, to file: {requirements_file}")
         urllib.request.urlretrieve(requirements_url, requirements_file)
         return True
+
     except Exception as e:
         logger.warning(f"Error downloading python requirements from url {requirements_url}: {e}")
         print("(!) Error occurred while downloading software requirements.\n")
         return False
 
 
-def install_requirements(requirements) -> bool:
+def install_requirements(requirements: list) -> bool:
     print(f"New software dependencies are available:")
     for req in requirements:
         req = req.split('\n')[0]
@@ -216,35 +285,37 @@ def install_requirements(requirements) -> bool:
     run_update = input()
 
     if run_update.upper() == 'Y':
-        logger.debug(f"Installing missing requirements from file: {requirements_file}")
+        logger.info(f"Installing missing requirements from file: {requirements_file}")
         print(f"Downloading new python pip packages...\n")
         return os.system(f"pip install --disable-pip-version-check -r {requirements_file}")
     else:
-        logger.debug("Requirements update skipped")
+        logger.info("Requirements update skipped")
         print("Requirements update skipped.\n")
         return False
 
 
 # check software updates
-def check_updates() -> Tuple[str, str]:
+def check_updates() -> tuple[str, str]:
     # get latest version number
     response = requests.get(update_version_url)
     if (response.status_code == 200):
         update_info = response.text.split('\n')
 
         # newer version available on repo
-        if (update_info[0]) > (version_num):
-        #if version.parse(update_info[0]) > version.parse(version_num):
-            logger.debug(f"Current version: {version_num}, found update: {update_info}")
+        if (update_info[0]) > (VERSION_NUM):
+        #if version.parse(update_info[0]) > version.parse(VERSION_NUM):
+            logger.info(f"Current version: {VERSION_NUM}, found update: {update_info}")
             return update_info[0], update_info[1]
 
         else:
-            logger.debug(f"No updates available. Current version: {version_num}, online version: {update_info}")
+            logger.info(f"No updates available. Current version: {VERSION_NUM}, online version: {update_info}")
             return None, None
+
     else:
         logger.error(f"{e} {response.status_code}, {response.text}")
         e = "(!) Error occurred while checking available updates."
         print(e)
+        message_box(e, msg_type='warning')
         return None, None
 
 
@@ -258,20 +329,20 @@ def self_update() -> None:
         run_update = input()
 
         if run_update.upper() == 'Y':
-            logger.debug("Downloading new version and restarting")
+            logger.info("Downloading new version and restarting")
             print(f"Downloading new version and restarting...")
             urllib.request.urlretrieve(update_url, __file__)
             os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
         else:
-            logger.debug("Update skipped")
+            logger.info("Update skipped")
             print("Update skipped.")
 
     else:
-        logger.debug(f"self_update nothing to do")
+        logger.info(f"self_update nothing to do")
 
 
 # check string date format
-def check_date(date) -> Tuple[bool, str]:
+def check_date(date: str) -> tuple[bool, str]:
     try:
         datetime.strptime(date, "%d/%m/%Y")
     except ValueError as err:
@@ -280,7 +351,7 @@ def check_date(date) -> Tuple[bool, str]:
 
 
 # check string time format
-def check_time(time) -> Tuple[bool, str]:
+def check_time(time: str) -> tuple[bool, str]:
     try:
         datetime.strptime(time, "%H:%M")
     except ValueError as err:
@@ -289,18 +360,18 @@ def check_time(time) -> Tuple[bool, str]:
 
 
 # check if first date is after the second one
-def is_after_date(date_i, date_j) -> bool:
+def is_after_date(date_i: str, date_j: str) -> bool:
     return datetime.strptime(date_i, "%d/%m/%Y") > datetime.strptime(date_j, "%d/%m/%Y")
 
 
 # check if first hour is after the second one
-def is_after_hour(date_i, date_j) -> bool:
+def is_after_hour(date_i: str, date_j: str) -> bool:
     return datetime.strptime(date_i, "%H:%M") > datetime.strptime(date_j, "%H:%M")
 
 
 # check arguments and return error strings
-def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[bool, str]:
-    logger.debug(f"Running args check")
+def args_check(start_day: str, end_day: str, start_hr: str, end_hr: str) -> tuple[bool, str]:
+    logger.info(f"Running args check")
 
     # start and end day are mandatory
     if not start_day or not end_day:
@@ -356,159 +427,6 @@ def args_check(user_settings, start_day, end_day, start_hr, end_hr) -> Tuple[boo
                 return False, err
 
     return True, ""
-
-
-# create ICS file with provided event details
-def create_ics(user_settings, event_details) -> None:
-    # init calendar
-    logger.debug(f"ICS: create calendar")
-    mycal = Calendar()
-    # set properties to be compliant
-    mycal.add("prodid", f"-//CalDav ICS Client//{version_num}//{user_settings['domain']}//github.com/ynad/caldav-py-handler//")
-    mycal.add("version", "2.0")
-    #mycal.add('method', "REQUEST")
-
-    # add calendar subcomponents
-    logger.debug(f"ICS: create event")
-    myevent = Event()
-    #myevent.add('name', event_details['name'])
-    myevent.add('summary', event_details['name'])
-    myevent.add('description', event_details['description'])
-    myevent.add('dtstart', event_details['start'])
-    myevent.add('dtend', event_details['end'])
-    myevent.add('status', "confirmed")
-
-    # add location
-    myevent['location'] = vText(event_details['location'])
-
-    # creation time
-    create_time = datetime.strptime(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "%d/%m/%Y %H:%M:%S")
-    logger.debug(f"ICS: created time: {create_time}")
-    myevent.add('created', create_time)
-    
-    # uid - unique event ID
-    myevent['uid'] = event_details['uid']
-    myevent.add('priority', 5)
-
-    # add organizer
-    logger.debug(f"ICS: organizer: {user_settings['organizer_email']}")
-    organizer = vCalAddress(f"MAILTO:{user_settings['organizer_email']}")
-    organizer.params['CN'] = vText(user_settings['organizer_name'])
-    organizer.params['role'] = vText(user_settings['organizer_role'])
-    myevent['organizer'] = organizer
-
-    # add invites if present
-    if 'invite' in event_details:
-        invitees = event_details['invite'].split()
-        for i in invitees:
-            logger.debug(f"ICS: adding invite for: {i}")
-            attendee = vCalAddress(f"MAILTO:{i}")
-            attendee.params['CN'] = vText(i)
-            attendee.params['role'] = vText('REQ-PARTICIPANT')
-            attendee.params['PARTSTAT'] = vText('NEEDS-ACTION')
-            attendee.params['RSVP'] = vText('TRUE')
-            myevent.add('attendee', attendee, encode=0)
-
-    # add an alarm for the event
-    if 'alarm_type' in event_details:
-        logger.debug(f"ICS: adding alarm")
-        myalarm = Alarm()
-        myalarm.add("action", event_details['alarm_type'])
-        myalarm.add('summary', event_details['name'])
-        myalarm.add('description', event_details['description'])
-
-        # if invitees are present, add email notification
-        if 'invite' in event_details:
-            invitees = event_details['invite'].split()
-            for i in invitees:
-                logger.debug(f"ICS: alarm invite for: {i}")
-                attendee = vCalAddress(f"MAILTO:{i}")
-                #attendee.params['name'] = vText(i)
-                #attendee.params['role'] = vText('REQ-PARTICIPANT')
-                myalarm.add('attendee', attendee, encode=0)
-
-        # set trigger time
-        #myalarm.add("trigger", timedelta(days=-reminder_days))
-        if event_details['fullday'] is True:
-            logger.debug(f"ICS: fullday event")
-            myalarm.add("TRIGGER;RELATED=START", f"-P{event_details['alarm_time']}{event_details['alarm_format']}")
-        else:
-            logger.debug(f"ICS: fixed hours event")
-            myalarm.add("TRIGGER;RELATED=START", f"-PT{event_details['alarm_time']}{event_details['alarm_format']}")
-        myevent.add_component(myalarm)
-
-    # add event to the calendar
-    mycal.add_component(myevent)
-
-    # write event to ICS file
-    logger.debug(f"ICS: write to file {ics_file}")
-    with open(ics_file, 'wb') as f:
-        f.write(mycal.to_ical())
-
-
-# make PUT request to upload ICS event file to given calendar
-def webdav_put_ics(user_settings, calendar, event_id) -> Tuple[bool, str]:
-    # check ICS existance
-    if not os.path.exists(ics_file):
-        err = f"ERROR: missing ICS file {ics_file}, can't continue"
-        print(err)
-        logger.error(err)
-        return False
-
-    # read ICS ifle
-    logger.debug(f"webdav: read ics from file {ics_file}")
-    with open(ics_file, 'rb') as f:
-        data = f.read()
-
-    # if calendar is not set go default
-    if calendar == None:
-        calendar = user_settings['calendar_default']
-    logger.debug(f"webdav: calendar set to: {calendar}")
-
-    # make PUT request
-    try:
-        logger.debug(f"webdav: put request user-agent: {user_agent}")
-        res = requests.put(url=f"{user_settings['server']}/{user_settings['username']}/{calendar}/{event_id}",
-                            data=data,
-                            headers={'Content-Type': 'text/calendar', 'User-Agent': user_agent},
-                            auth = HTTPBasicAuth(user_settings['username'], user_settings['password']))
-
-        if (res.status_code == 201):
-            msg = f"Created ({res.status_code})"
-            print(msg)
-            logger.info(msg)
-
-        elif (res.status_code == 202):
-            msg = f"Accepted ({res.status_code})"
-            print(msg)
-            logger.info(msg)
-
-        elif (res.status_code == 204):
-            msg = f"No Content ({res.status_code})"
-            print(msg)
-            logger.info(msg)
-
-        else:
-            msg = (
-                f"ERROR: {str(res.status_code)}, {res.text}"
-            )
-            raise Exception(msg)
-
-        put_ack = True
-
-    except Exception as exc:
-        print(exc)
-        logger.error(exc)
-        put_ack = False
-
-    finally:
-        # rm tmp ics files
-        if os.path.exists(ics_file):
-            logger.debug(f"webdav: remove ics file {ics_file}")
-            os.remove(ics_file)
-        #pass
-
-    return put_ack, msg
 
 
 
@@ -568,6 +486,11 @@ def webdav_put_ics(user_settings, calendar, event_id) -> Tuple[bool, str]:
     help='"calendar-to-use". Default: "personal"'
 )
 @click.option(
+    "--group",
+    is_flag=True,
+    help='calendar is a group calendar'
+)
+@click.option(
     "--invite",
     type=str,
     default="",
@@ -592,42 +515,45 @@ def webdav_put_ics(user_settings, calendar, event_id) -> Tuple[bool, str]:
     help='time before the event to set an alarm for, in given format'
 )
 @click.option(
-    "--prompt",
+    "--noprompt",
     is_flag=True,
-    help='wait for user confirmation'
+    help='skip user confirmation'
 )
 @click.option(
-    "--no_report",
+    "--noreport",
     is_flag=True,
     help='skip report log copy for developer'
 )
 @click.option(
-    "--no_update",
+    "--noupdate",
     is_flag=True,
     help='skip software updates auto-check'
 )
 
 
 ## Main
-def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, invite, alarm_type, alarm_format, alarm_time, prompt, no_report, no_update):
+def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, group, invite, alarm_type, alarm_format, alarm_time, noprompt, noreport, noupdate):
 
+    global user_settings
     global update_version
     global update_date
 
     # load user settings from json file
     user_settings = load_user_settings(config)
     if not user_settings:
-        logger.error(f"User config file missing: {config}")
-        print(f"User config file missing: {config}")
+        err = f"User config file missing: {config}"
+        logger.error(err)
+        print(err)
+        message_box(err, msg_type='error')
         input("Cannot continue. Press enter to exit.")
         return
 
     # print software header
-    print_header(user_settings)
+    print(f"\n{string_header(terminal=True)}")
 
 
     # check software updates
-    if not no_update:
+    if not noupdate:
         update_version, update_date = check_updates()
 
         # check dependecies update
@@ -637,12 +563,12 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
 
 
     # check command line arguments
-    args_ack, err = args_check(user_settings, start_day, end_day, start_hr, end_hr)
+    args_ack, err = args_check(start_day, end_day, start_hr, end_hr)
     if not args_ack:
         logger.warning(err)
         print(f"Error: {err}\n")
-        show_syntax()
-        msgbox(err, 'error')
+        print(show_syntax())
+        message_box(err, msg_type='warning')
         input("Press enter to exit.")
         return
 
@@ -650,13 +576,22 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
     # if more than one start & end days/hours are provided, split them and repeat all procedure for each one
     start_day_list = start_day.split()
     end_day_list = end_day.split()
-
+    # split hours
     if start_hr and end_hr:
         start_hr_list = start_hr.split()
         end_hr_list = end_hr.split()
+
+    # if a calendar is given via command line option overrides user settings, if any
+    if not cal and 'calendar' in user_settings and user_settings['calendar']:
+        cal = user_settings['calendar']
+    elif not cal:
+        cal = 'personal'
+
+    # if a location is given via command line option overrides user settings, if any
+    if not loc and 'location' in user_settings and user_settings['location']:
+        loc = user_settings['location']
     
     events_list = []
-
     # cycle by key over list of event dates and to list one event each
     for i, day in enumerate(start_day_list):
 
@@ -664,11 +599,15 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
         event_details = {
             'name' : name,
             'description' : descr,
-            'calendar' : cal if cal else None,
-            'location' : loc if loc else user_settings['location_default'],
+            'calendar' : cal,
+            'group' : group,
             'uid' : (f"{str(datetime.now().timestamp())}_{random.randint(100000, 999999)}_{name}@{user_settings['domain']}").replace(" ", "-")
         }
-        logger.debug(f"Building event details with UID: {event_details['uid']}")
+        logger.info(f"Building event details with UID: {event_details['uid']}")
+
+        # add location if any
+        if loc:
+            event_details['location'] = loc
 
         # event with fixed hours
         if start_hr and end_hr:
@@ -677,24 +616,24 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
                 event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]}", "%d/%m/%Y").date() } )
                 event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]}", "%d/%m/%Y").date() + timedelta(days=1) } )
                 event_details.update( { 'fullday' : True } )
-                logger.debug(f"Full day event, all-0 hours")
+                logger.info(f"Full day event, all-0 hours")
             else:
             # set fixed hours
                 event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]} {start_hr_list[i]}", "%d/%m/%Y %H:%M") } )
                 event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]} {end_hr_list[i]}", "%d/%m/%Y %H:%M") } )
                 event_details.update( { 'fullday' : False } )
-                logger.debug(f"Fixed hours event")
+                logger.info(f"Fixed hours event")
         # full day event
         else:
             event_details.update( { 'start' : datetime.strptime(f"{start_day_list[i]}", "%d/%m/%Y").date() } )
             event_details.update( { 'end' : datetime.strptime(f"{end_day_list[i]}", "%d/%m/%Y").date() + timedelta(days=1) } )
             event_details.update( { 'fullday' : True } )
-            logger.debug(f"Full day event")
+            logger.info(f"Full day event")
         
         # add invitees, can be 1 or more separated by a space
         if invite:
             event_details.update( { 'invite' : invite } )
-            logger.debug(f"Invites requested for: {invite}")
+            logger.info(f"Invites requested for: {invite}")
 
         # set alarm - all 3 parameters must be given otherwise none is set
         if alarm_type and alarm_format and alarm_time:
@@ -704,61 +643,51 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, in
                 event_details.update( { 'alarm_type' : alarm_type } )
                 event_details.update( { 'alarm_format' : alarm_format } )
                 event_details.update( { 'alarm_time' : alarm_time } )
-                logger.debug(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
+                logger.info(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
 
         # append event to list
         events_list.append(event_details)
 
 
     # print events summary
-    logger.debug(f"print events summary")
+    logger.info(f"print events summary")
+    output_tk = ''
     print(f"\nThe following {len(start_day_list)} event(s) will be added:\n")
 
     # cycle over events list
     for j, event_n in enumerate(events_list):
 
-        print(f"Event {j+1}/{len(start_day_list)}\n"
+        string_output = (f"Event {j+1}/{len(start_day_list)}\n"
               f"-----------\n"
-              f"NAME:\t\t{event_n['name']}\n"
-              f"DESCRIPTION:\t{event_n['description']}\n"
-              f"\nSTART DATE:\t{datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"END DATE:\t{datetime.strftime(event_n['end'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"LOCATION:\t{event_n['location']}\n"
-              f"CALENDAR:\t{event_n['calendar']}")
+              f"NAME:           {event_n['name']}\n"
+              f"DESCRIPTION:    {event_n['description']}\n"
+              f"\nSTART DATE:     {datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
+              f"END DATE:       {datetime.strftime(event_n['end'], '%d/%m/%Y %H:%M:%S')}\n"
+              f"LOCATION:       {event_n['location'] if 'location' in event_n else 'None'}\n"
+              f"CALENDAR:       {event_n['calendar']}")
         if invite:
-            print(f"INVITEE:\t{event_n['invite']}")
+            string_output += f"INVITEE:        {event_n['invite']}"
         if 'alarm_type' in event_n:
-            print(f"ALARM:\t\t{event_n['alarm_type']}, {event_n['alarm_time']}{event_n['alarm_format']} before")
-        print("----------------------------------------------\n")
+            string_output += f"ALARM:          {event_n['alarm_type']}, {event_n['alarm_time']}{event_n['alarm_format']} before"
+        string_output += "\n----------------------------------------------\n"
+
+        # append and print
+        output_tk += string_output
+        print(string_output)
     
-    # wait for user confirmation if enabled. To skip omit argument '--prompt'
-    logger.debug(f"Wait for user prompt to proceed")
-    if prompt:
-        input("Press enter to confirm.")
-
-
-    # compile ICS and create event for each one in list
-    for event_n in events_list:
-
-        # compile ICS file
-        create_ics(user_settings, event_n)
-
-        # upload it to caldav server
-        res, msg = webdav_put_ics(user_settings, event_n['calendar'], event_n['uid'])
-        if res:
-            msgbox(f"{msg[:-6]}:\n{event_n['name']}", 'info')
-        else:
-            msgbox(f"{msg}:\n{event_n['name']}", 'error')
+    # skip user confirmation if enabled with --noprompt
+    if noprompt:
+        logger.info(f"Proceed creating events")
+        create_events(events_list)
+    else:
+        logger.info(f"Wait for user prompt to proceed")
+        confirm_box(output_tk, events_list)
+        #input("Press enter to confirm.")
 
 
     # send log report
-    if not no_report:
-        send_report(user_settings)
-
-    # final prompt
-    #if prompt:
-    #    print("")
-    #    input("Press enter to exit.")
+    if not noreport:
+        send_report()
 
 
 if __name__ == '__main__':
