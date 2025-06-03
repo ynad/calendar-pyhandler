@@ -1,41 +1,51 @@
 #!/usr/bin/python
 
-#
-## mgraphAgent.py
-# Class to handle events creation via Microsoft Graph REST API.
-# Generates an OAuth access token with interactive user login.
-# Token cache file and User-Agent may be overridden via properties.
-# Current capabilities: 
-#   * Events creation: user calendars, shared calendars, group calendars
-#
-# 'user_settings' dict format:
-#        {
-#            "mode" : "microsoft_graph",
-#            "domain" : "cloud.domain.com",
-#            "azure_client_id" : "client-id",
-#            "azure_tenant_id" : "tenant-id",
-#            "username": "jane.doe",
-#            "calendar" : "personal",
-#            "organizer_name" : "Jane Doe",
-#            "organizer_role" : "IT",
-#            "organizer_email" : "info@example.com",
-#            "location" : "Main Office",
-#            "report" : "path/to/reports-folder"
-#        }
-#
-# See README.me for full details.
-#
-## License
-# Released under GPL-3.0 license.
-#
-# 2025.04.04
+# Copyright 2025 Daniele Vercelli - ynad <info@danielevercelli.it>
 # https://github.com/ynad/calendar-pyhandler
-# info@danielevercelli.it
 #
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>
+
+"""
+# mgraphAgent.py
+2025-05-28
+
+Class to handle events creation via Microsoft Graph REST API.
+Generates an OAuth access token with interactive user login.
+Token cache file and User-Agent may be overridden via properties.
+Current capabilities: 
+  * Events creation: user calendars, shared calendars, group calendars
+
+'user_settings' dict format:
+       {
+           "mode" : "microsoft_graph",
+           "domain" : "cloud.domain.com",
+           "azure_client_id" : "client-id",
+           "azure_tenant_id" : "tenant-id",
+           "username": "jane.doe",
+           "calendar" : "personal",
+           "organizer_name" : "Jane Doe",
+           "organizer_role" : "IT",
+           "organizer_email" : "info@example.com",
+           "location" : "Main Office",
+           "report" : "path/to/reports-folder"
+       }
+
+See README.me for full details.
+"""
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-VERSION_NUM = "0.6.0"
+VERSION_NUM = "0.7.1"
 DEV_EMAIL = "info@danielevercelli.it"
 PROD_NAME = "mgraph-pyAgent"
 PROD_URL = "github.com/ynad/calendar-pyhandler"
@@ -48,7 +58,7 @@ import json
 import logging
 import requests
 import msal
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 
 
@@ -115,12 +125,12 @@ class MGraphAgent():
             logger.info(f"interactive user log in")
             result = graph_app.acquire_token_interactive(self.ms_scopes)
 
-        # Save updated token cache
-        with open(self.cache_file, "w") as fp:
-            fp.write(cache.serialize())
-
         if "access_token" in result:
             logger.info(f"access_token found")
+            # Save updated token cache
+            with open(self.cache_file, "w") as fp:
+                fp.write(cache.serialize())
+            
             return result["access_token"]
 
         else:
@@ -130,7 +140,7 @@ class MGraphAgent():
 
 
     def __request_post(self, url: str, payload: dict) -> tuple[bool, str]:
-        logger.info(f"request POST, url endpoint: {url}, event_data: {event_data}")
+        logger.info(f"request POST, url endpoint: {url}, payload: {payload}")
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
@@ -165,7 +175,7 @@ class MGraphAgent():
             url = f"{self.graph_url}/me/calendars/{event_data['calendar']}/events"
 
         # send to ms graph API
-        res, msg = self.__post_event(url, event_details)
+        res, msg = self.__request_post(url, event_details)
 
         # append result message
         msg = f"{event_data['name']}\n{msg}"
@@ -174,43 +184,97 @@ class MGraphAgent():
         return res, msg
 
 
-    def __format_event(self, event_data: dict) -> dict:
-        event_details = {
-            "subject": event_data['name'],
+    def __format_event(self, event_details: dict) -> dict:
+        # base date
+        event_data = {
+            "subject": event_details['name'],
             "start": {
-                "dateTime": datetime.strftime(event_data['start'], '%Y-%m-%dT%H:%M:%S'), 
+                "dateTime": datetime.strftime(event_details['start'], '%Y-%m-%dT%H:%M:%S'), 
                 "timeZone": "Europe/Berlin"
             },
             "end": {
-                "dateTime": datetime.strftime(event_data['end'], '%Y-%m-%dT%H:%M:%S'),
+                "dateTime": datetime.strftime(event_details['end'], '%Y-%m-%dT%H:%M:%S'),
                 "timeZone": "Europe/Berlin"
             },
             "body": {
-                "content": event_data['description'],
+                "content": event_details['description'],
                 "contentType": "text"
-            }
+            },
+            "createdDateTime" : datetime.now(timezone.utc).isoformat(),
+            "importance" : "normal"
         }
-        if 'location' in event_data and event_data['location']:
-            event_details['location'] = {
-                "displayName": event_data['location']
+        # bool flag for full day event
+        if event_details['fullday']:
+            event_data['isAllDay'] = True
+
+        # location
+        if 'location' in event_details and event_details['location']:
+            event_data['location'] = {
+                "displayName": event_details['location']
             }
 
-        if 'invite' in event_data:
-            invitees = event_data['invite'].split()
-            event_details['attendees'] = []
+        # list of attendees
+        if 'invite' in event_details:
+            invitees = event_details['invite'].split()
+            event_data['attendees'] = []
             for i in invitees:
-                event_details['attendees'].append(
+                event_data['attendees'].append(
                     { 
-                        "emailAddress":
+                        "emailAddress" :
                         { 
-                            "address": i
+                            "address" : i
                         },
-                        "type": "required" 
+                        "type" : "required" 
                     }
                 )
 
-        logger.debug(f"event data formatted: {event_details}")
+        # optional organizer info
+        if 'organizer_email' in self.__user_settings:
+            if 'organizer_name' in self.__user_settings:
+                if 'organizer_role' in self.__user_settings:
+                    name = f"{self.__user_settings['organizer_name']} ({self.__user_settings['organizer_role']})"
+                else:
+                    name = f"{self.__user_settings['organizer_name']}"
+            else:
+                name = ''
 
-        return event_details
+            event_data['organizer'] = { 
+                        "emailAddress" :
+                        {
+                            "address" : self.__user_settings['organizer_email'],
+                            "name" : name
+                        }
+                    }
+
+        # add an alarm for the event
+        if 'alarm_type' in event_details:
+            if event_details['alarm_type'] == 'DISPLAY':
+
+                try:
+                    # calc time in minutes
+                    if event_details['alarm_format'] == 'D':
+                        reminder_mins = int(event_details['alarm_time']) * 1440
+
+                    elif event_details['alarm_format'] == 'H':
+                        h, m = event_details['alarm_time'].split(':')
+                        reminder_mins = (int(h) * 60) + int(m)
+                except ValueError as exc:
+                    logger.warning(f"Invalid alarm_time, must be integer HH:MM or D")
+                    raise ValueError(f"Invalid alarm_time, must be integer HH:MM or D")
+
+                logger.info(f"alarm reminder set to: {reminder_mins} minutes")
+                event_data['reminderMinutesBeforeStart'] = reminder_mins
+                event_data['isReminderOn'] = True
+
+            elif event_details['alarm_type'] == 'EMAIL':
+                logger.warning("Alarm EMAIL not implemented")
+                raise ValueError("Alarm EMAIL not implemented")
+            else:
+                logger.error("Invalid alarm_type")
+                raise ValueError("Invalid alarm_type")
+
+
+        logger.debug(f"event data formatted: {event_data}")
+        return event_data
 
 
