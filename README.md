@@ -1,13 +1,14 @@
 # calendar-pyhandler
 
-Middleware CLI utility to handle operations on calendars: currenlty supports CalDAV (WebDAV) and Microsoft Graph API (Microsoft 365).
-Event details and other options are set via command line arguments. See --help for more.
-User settings must be provided in a JSON file. See full examples in `config/` for CalDav and Graph.
+Middleware tools to handle operations on calendars: currenlty support Microsoft Graph API (Microsoft 365) and CalDAV (WebDAV).
+Aimed to be used as interface for other apps, to easily interact with calendars and automate jobs.
 
-Aimed to be used as interface for other appliances willing to easily interact with calendars.
+Uses some basic GUI for diplaying operations output.
 
 ## User settings
-User settings config must be formatted as JSON data as follows. By default the app searches for the file `user_settings.json`. You may specify a different one with `--config` option.
+User settings must be formatted as JSON data as follows. By default the app searches for `user_settings.json`. You may specify a different one with `--config` option.
+
+See some examples in `config/` for Graph and CalDAV.
 
 ### Microsoft Graph (365):
 ```
@@ -45,7 +46,9 @@ User settings config must be formatted as JSON data as follows. By default the a
 }
 ```
 
-## Syntax
+## Usage
+Event details and all other options are set via command line options. See `--help` for more.
+
 Mind the required quotes for each string argument.
 
 Optional arguments are enclosed by [n]; if missing, field is ignored or default values are used.
@@ -84,7 +87,7 @@ App behavior settings:
 - optional - python venv: set up with `python -m venv .venv`
 - pip requirements, listed in `requirements.txt`
 
-For a guided setup of venv and pip requirements use either `setup.sh` (Linux) or `setup.bat` (Windows). Or else manually install pip requirements with `pip install -r requirements.txt`.
+For a guided setup of venv and pip requirements use `setup.sh` (Linux) or `setup.bat` (Windows). Or else manually install pip requirements with `pip install -r requirements.txt`.
 
 ## License
 Released under GPL-3.0 license.
