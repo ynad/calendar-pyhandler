@@ -1,14 +1,26 @@
+Attribute VB_Name = "Calendar"
 '
-' Sample VBA macro definitions to be used to integrate Excel spreadsheets.
+' VBA macro definitions to be used to integrate Excel spreadsheets.
 '
-' v0.3.7 - 2023.03.06
+''' Implementation example '''
+'
+' v0.7.1 - 2025.05.28
 ' https://github.com/ynad/caldav-py-handler
 ' info@danielevercelli.it
 '
 
 
-' macro to add events of training/formation. Single or multi-day. Single or multiple attendants. Hours might be provided too
+' macro to add events of training/formation. Single or multi-day. Hours might be provided too
 Sub calAdd_training()
+
+    scriptFolder = "C:\MY_SCRIPTS\calendar-pyhandler\"
+    Debug.Print "Script folder: " & scriptFolder
+    
+    ' check if folder script exists on local PC
+    If Not Dir(scriptFolder, vbDirectory) <> "" Then
+        MsgBox "Script non trovato su questo PC, non posso procedere", vbCritical
+        Exit Sub
+    End If
 
     ' compose event name
     If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
@@ -20,12 +32,12 @@ Sub calAdd_training()
     End If
     EventName = Application.WorksheetFunction.Trim(EventName)
     
-    ' DATE FORMAT may be: 
+    ' DATE FORMAT can be:
     ' single date "dd/mm/YYYY"
     ' range of dates "dd/mm/YYYY - dd/mm/YYYY"
     ' list of dates, single or ranges "dd/mm/YYYY; dd/mm/YYYY - dd/mm/YYYY"
     '
-    ' HOURS format may be:
+    ' HOURS format can be:
     ' single date with fixed hours "dd/mm/YYYY, hh:mm _ hh:mm"
     ' range of dates, with first day start hour and last day end hour "dd/mm/YYYY - dd/mm/YYYY, hh:mm _ hh:mm"
     ' list of dates, with an hours duration each "dd/mm/YYYY, hh:mm _ hh:mm; dd/mm/YYYY - dd/mm/YYYY, hh:mm _ hh:mm"
@@ -99,8 +111,8 @@ Sub calAdd_training()
             hours = Split(date_hours(1), " _ ", 2)
             If UBound(hours) > 0 Then
                 ' set start and end hours
-                start_hr = start_hr & " " & hours(0)
-                end_hr = end_hr & " " & hours(1)
+                start_hr = hours(0)
+                end_hr = hours(1)
                 ' re-set data to remaining string without hours
                 EventDate = date_hours(0)
             End If
@@ -161,15 +173,15 @@ Sub calAdd_training()
     ' use different pattern depending on the same parameter used before, in this example person ID number
     If Cells(ActiveCell.Row, 2) < 1000 Then
         If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
-            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "PATTERN_1: " + vbCrLf + values_string
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "CAT1: " + vbCrLf + values_string
         Else
-            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "PATTERN_1: " + vbCrLf + values_string
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "CAT1: " + vbCrLf + values_string
         End If
     Else
         If Not IsEmpty(Cells(5, ActiveCell.Column)) Then
-            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "PATTERN_2: " + vbCrLf + values_string
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column) + vbCrLf + vbCrLf + "CAT2: " + vbCrLf + values_string
         Else
-            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "PATTERN_2: " + vbCrLf + values_string
+            EventDescr = Cells(6, ActiveCell.Column) + " " + Cells(5, ActiveCell.Column - 1) + vbCrLf + vbCrLf + "CAT2: " + vbCrLf + values_string
         End If
     End If
     ' trim extra white spaces in description
@@ -186,7 +198,28 @@ Sub calAdd_training()
     'End If
 
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 30" & """")
+    'Create a new Shell Object
+    Set objShell = VBA.CreateObject("Wscript.shell")
+         
+    'Provide the file path to the Python Exe
+    PythonExe = """python.exe"""
+         
+    'Provide the file path to the Python script
+    PythonScript = scriptFolder & "calendar-pyCLIent.py"
+    
+    ' add commands
+    shellCommand = " --config " & scriptFolder & "user_settings.json" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & """" & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "personal" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 60" & """"
+   
+    ' run it hidden (0) and wait result (True)
+    ' https://www.vbsedit.com/html/6f28899c-d653-4555-8a59-49640b0e32ea.asp
+    exitCode = objShell.Run(PythonExe & PythonScript & shellCommand, 0, True)
+
+    If exitCode <> 0 Then
+        Debug.Print "Codice di ritorno d'errore, non continuo: " & exitCode
+        MsgBox "Errore in esecuzione script: " & exitCode, vbCritical
+    Else
+        Debug.Print "Completato calAdd_training"
+    End If
 
 End Sub
 
@@ -194,9 +227,18 @@ End Sub
 ' macro to add events of maintenance routines
 Sub calAdd_maintenance()
 
+    scriptFolder = "C:\MY_SCRIPTS\calendar-pyhandler\"
+    Debug.Print "Script folder: " & scriptFolder
+    
+    ' check if folder script exists on local PC
+    If Not Dir(scriptFolder, vbDirectory) <> "" Then
+        MsgBox "Script non trovato su questo PC, non posso procedere", vbCritical
+        Exit Sub
+    End If
+
     ' compose event name
     EventName = (ActiveSheet.Name + " " + Cells(ActiveCell.Row, 1))
-
+    
     ' compose event description
     ' date and description same row
     If Not IsEmpty(Cells(ActiveCell.Row, 1)) Then
@@ -208,7 +250,7 @@ Sub calAdd_maintenance()
     ElseIf Not IsEmpty(Cells(ActiveCell.Row - 2, 1)) Then
         EventDescr = Cells(ActiveCell.Row - 2, 1)
     End If
-
+    
     ' trim extra white spaces
     EventName = Application.WorksheetFunction.Trim(EventName)
     EventDescr = Application.WorksheetFunction.Trim(EventDescr)
@@ -232,15 +274,45 @@ Sub calAdd_maintenance()
             end_day = date_hours(0)
         End If
     End If
-    
+
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "mycalendar" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
+    'Create a new Shell Object
+    Set objShell = VBA.CreateObject("Wscript.shell")
+         
+    'Provide the file path to the Python Exe
+    PythonExe = """python.exe"""
+         
+    'Provide the file path to the Python script
+    PythonScript = scriptFolder & "calendar-pyCLIent.py"
+    
+    ' add commands
+    shellCommand = " --config " & scriptFolder & "user_settings.json" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & """" & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "personal" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """"
+
+    ' run it hidden (0) and wait result (True)
+    ' https://www.vbsedit.com/html/6f28899c-d653-4555-8a59-49640b0e32ea.asp
+    exitCode = objShell.Run(PythonExe & PythonScript & shellCommand, 0, True)
+
+    If exitCode <> 0 Then
+        Debug.Print "Codice di ritorno d'errore, non continuo: " & exitCode
+        MsgBox "Errore in esecuzione script: " & exitCode, vbCritical
+    Else
+        Debug.Print "Completato calAdd_maintenance, exitCode: " & exitCode
+    End If
     
 End Sub
 
 
 ' macro to add events of maintenance routines
 Sub calAdd_maintenance_invite()
+
+    scriptFolder = "C:\MY_SCRIPTS\calendar-pyhandler\"
+    Debug.Print "Script folder: " & scriptFolder
+    
+    ' check if folder script exists on local PC
+    If Not Dir(scriptFolder, vbDirectory) <> "" Then
+        MsgBox "Script non trovato su questo PC, non posso procedere", vbCritical
+        Exit Sub
+    End If
 
     ' compose event name
     EventName = (ActiveSheet.Name + " " + Cells(ActiveCell.Row, 1))
@@ -256,7 +328,7 @@ Sub calAdd_maintenance_invite()
     ElseIf Not IsEmpty(Cells(ActiveCell.Row - 2, 1)) Then
         EventDescr = Cells(ActiveCell.Row - 2, 1)
     End If
-
+    
     ' trim extra white spaces
     EventName = Application.WorksheetFunction.Trim(EventName)
     EventDescr = Application.WorksheetFunction.Trim(EventDescr)
@@ -282,7 +354,7 @@ Sub calAdd_maintenance_invite()
     End If
     
     ' invite email(s). Must be separated by spaces
-    ' search for correct given key word to identify correct cell with email(s)
+    ' search for correct given key word to identify correct cell in given possibilities
     If StrComp(Cells(6, 1), "TO BE INVITED") = 0 Then
         InviteEmail = Cells(6, 4)
     ElseIf StrComp(Cells(7, 1), "TO BE INVITED") = 0 Then
@@ -294,41 +366,28 @@ Sub calAdd_maintenance_invite()
     End If
         
     ' call external script passing parameters in proper syntax
-    Call Shell("python caldav-ics-client.py" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & start_day & " --end_day " & end_day & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "mycalendar" & """" & " --invite " & """" & InviteEmail & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """")
+    'Create a new Shell Object
+    Set objShell = VBA.CreateObject("Wscript.shell")
+         
+    'Provide the file path to the Python Exe
+    PythonExe = """python.exe"""
+         
+    'Provide the file path to the Python script
+    PythonScript = scriptFolder & "calendar-pyCLIent.py"
     
-End Sub
+    ' add commands
+    shellCommand = " --config " & scriptFolder & "user_settings.json" & " --name " & """" & EventName & """" & " --descr " & """" & EventDescr & """" & " --start_day " & """" & start_day & """" & " --end_day " & """" & end_day & """" & " --start_hr " & """" & start_hr & """" & " --end_hr " & """" & end_hr & """" & " --cal " & """" & "personal" & " --invite " & """" & InviteEmail & """" & """" & " --alarm_type DISPLAY" & " --alarm_format D" & " --alarm_time 1" & """"
 
+    ' run it hidden (0) and wait result (True)
+    ' https://www.vbsedit.com/html/6f28899c-d653-4555-8a59-49640b0e32ea.asp
+    exitCode = objShell.Run(PythonExe & PythonScript & shellCommand, 0, True)
 
-' macro to iterate over a predefined set of cells and copy/fill values on given conditions
-Sub Deadline()
-    For Each c In Worksheets("One").Range("B10:B12").Cells
-        If c.Value > 0 Then Worksheets("SUMMARY").Range("D5").Value = c.Value
-    Next
-    For Each c In Worksheets("Two").Range("C10:C12").Cells
-        If c.Value > 0 Then Worksheets("SUMMARY").Range("C5").Value = c.Value
-    Next
-    For Each c In Worksheets("Three").Range("D10:D12").Cells
-        If c.Value > 0 Then Worksheets("SUMMARY").Range("B5").Value = c.Value
-    Next
-End Sub
-
-
-'
-Sub Range()
-    Dim rng As Range: Set rng = Application.Range("Sheet1!B10:C12")
-    Dim cel As Range
-    For Each cel In rng.Cells
-        With cel
-            Debug.Print .Address & ":" & .Value
-        End With
-    Next cel
-End Sub
-
-
-' macro trigger with double click on any cell inside given range
-Sub Worksheet_BeforeDoubleClick(ByVal Target As Range, Cancel As Boolean)
-    If Not Application.Intersect(Target, Range("A1:E21")) Is Nothing Then
-        EventName = (ActiveSheet.Name + " " + Range("A10").Value)
-        Call Shell("python caldav-ics-client.py" & " --name " & EventName & " --start_day " & Target.Value & " --end_day " & Target.Value)
+    If exitCode <> 0 Then
+        Debug.Print "Codice di ritorno d'errore, non continuo: " & exitCode
+        MsgBox "Errore in esecuzione script: " & exitCode, vbCritical
+    Else
+        Debug.Print "Completato calAdd_maintenance_invite"
     End If
+
 End Sub
+
