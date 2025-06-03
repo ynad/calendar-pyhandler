@@ -1,61 +1,90 @@
-# caldav-py-handler
-A small webdav-caldav client to handle caldav sync from command line.
+# calendar-pyhandler
 
-Aimed to be used as interface for other appliances willing to link with a caldav reality.
+Middleware CLI utility to handle operations on calendars: currenlty supports CalDAV (WebDAV) and Microsoft Graph API (Microsoft 365).
+Event details and other options are set via command line arguments. See --help for more.
+User settings must be provided in a JSON file. See full examples in `config/` for CalDav and Graph.
+
+Aimed to be used as interface for other appliances willing to easily interact with calendars.
 
 ## User settings
-User settings data must be formatted in JSON as follow, by default the app searches for it in file `user_settings.json`:
+User settings config must be formatted as JSON data as follows. By default the app searches for the file `user_settings.json`. You may specify a different one with `--config` option.
+
+### Microsoft Graph (365):
 ```
 {
+    "mode" : "microsoft_graph",
+    "azure_client_id" : "secret-azure-client-id",
+    "azure_tenant_id" : "secret-azure-tenant-id",
     "domain" : "cloud.domain.com",
-    "server" : "https://cloud.domain.com/remote.php/dav/calendars",
-    "username": "jane.doe",
-    "password": "secret-app-password",
-    "calendar_default" : "personal",
-    "organizer_name" : "Jane Doe",
-    "organizer_role" : "IT",
-    "organizer_email" : "info@example.com",
-    "location_default" : "Main Office",
-    "report" : "path/to/reports-folder"
+    "username": "user.name",
+    "calendar" : "personal",
+    "_calendar" : "<calendar-or-group-id>",
+    "_group" : false,
+    "organizer_name" : "User Name",
+    "organizer_role" : "Very Specialist",
+    "organizer_email" : "user.name@domain.com",
+    "_location" : "My Conference Room",
+    "_report" : "/tmp/report"
 }
 ```
-`USER SETTINGS` section in the code might need to be adjusted to your working path.
-Logging level defaults to DEBUG, to log file `debug.log`.
+
+### CalDAV / WebDAV
+```
+{
+    "mode" : "caldav",
+    "domain" : "cloud.domain.com",
+    "server" : "https://cloud.domain.com/remote.php/dav/calendars",
+    "username": "user.name",
+    "password": "super-secret-password",
+    "calendar" : "personal",
+    "organizer_name" : "User Name",
+    "organizer_role" : "Very Specialist",
+    "organizer_email" : "user.name@domain.com",
+    "_location" : "My Conference Room",
+    "_report" : "/tmp/report"
+}
+```
 
 ## Syntax
 Mind the required quotes for each string argument.
 
 Optional arguments are enclosed by [n]; if missing, field is ignored or default values are used.
 ```
-python caldav-ics-client.py
+$ python3 calendar-pyCLIent.py
+Usage: calendar-pyCLIent.py [OPTIONS]
 
-Missing arguments! Syntax:
-caldav-ics-client.py
+Syntax:
+
+Event and calendar settings:
     --name "event name"
     --descr "event description"
-    --start_day dd/mm/YYYY
-    --end_day dd/mm/YYYY
-   [--start_hr HH:MM:SS]
-   [--end_hr HH:MM:SS]
+    --start_day dd/mm/YYYY [dd/mm/YYYY [...]]
+    --end_day dd/mm/YYYY [dd/mm/YYYY [...]]
+   [--start_hr HH:MM [HH:MM [...]]]
+   [--end_hr HH:MM [HH:MM [...]]]
    [--loc "event location"]
-   [--cal "calendar to be used"]
-   [--invite "email(s) to be invited, separated by space"]
-   [--alarm_type : alarm to be set on event: "DISPLAY" or "EMAIL". Default: none]
+   [--cal "calendar-name-or-ID". Default: "personal"]
+   [--group : bool flag to set this as a group calendar. Default: False]
+   [--invite "user1@mail.org user2@mail.net" : email(s) to be invited, separated by space]
+
+Alarm settings, all 3 parameters must be set or none is considered:
+   [--alarm_type : "DISPLAY" or "EMAIL". Alarm to be set on event. Default: none]
    [--alarm_format : "h" = hours, "d" = days]
-   [--alarm_time : time before the event to set an alarm for]
-   [--config "path/to/config_file.json. Default: "user_settings.json"]
-   [--prompt : wait for user confirmation]
-   [--no_report : skip report log copy for developer]\n"
-   [--no_update : skip software updates auto-check]\n"
+   [--alarm_time : time before the event to set an alarm for. Format HH:MM for "H", or N > 0 for "D"]
+
+App behavior settings:
+   [--config "path\to\config-file.json". Default: "user_settings.json"]
+   [--noprompt : bool, skip user confirmation]
+   [--noreport : bool, skip report log copy for developer]
+   [--noupdate : bool, skip software updates auto-check]
 ```
 
 ## Requirements
-Required python libraries are listed in file `requirements.txt`.
-Install them with pip:
-```
-pip install -r requirements.txt
-```
+- Python >= 3.10
+- optional - python venv: set up with `python -m venv .venv`
+- pip requirements, listed in `requirements.txt`
 
+For a guided setup of venv and pip requirements use either `setup.sh` (Linux) or `setup.bat` (Windows). Or else manually install pip requirements with `pip install -r requirements.txt`.
 
 ## License
 Released under GPL-3.0 license.
