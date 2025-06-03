@@ -19,9 +19,9 @@
 # calendar-pyCLIent.py
 2025-06-03
 
-CLI client to handle operations on calendars: currenlty supports CalDav (WebDAV) and Microsoft Graph API (Microsoft 365).
-Event details and other options are via command line arguments. See --help for more.
-User settings must be provided in a JSON file. See config examples for CalDav and Graph.
+Middleware CLI client to handle operations on calendars: currenlty supports Microsoft Graph API (Microsoft 365) and CalDAV (WebDAV).
+Event details and all other options are set command line options. See --help for more.
+User settings must be formatted as JSON. See config examples for CalDAV and Graph.
 
 See README.me for full details.
 """
@@ -76,8 +76,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# set filenames on local path
-# ics tmp file
+
+# ics tmp file on local path
 ics_file=f"{os.path.dirname(__file__)}/{ics_file}"
 
 
@@ -163,13 +163,13 @@ def show_syntax() -> str:
             "   [--invite \"user1@mail.org user2@mail.net\" : email(s) to be invited, separated by space]\n"
             "\nAlarm settings, all 3 parameters must be set or none is considered:\n"
             "   [--alarm_type : \"DISPLAY\" or \"EMAIL\". Alarm to be set on event. Default: none]\n"
-            "   [--alarm_format : \"H\" = hours, \"D\" = days]\n"
+            "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
             "   [--alarm_time : time before the event to set an alarm for. Format HH:MM for \"H\", or N > 0 for \"D\"]\n"
             "\nApp behavior settings:\n"
             "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
             "   [--noprompt : bool, skip user confirmation]\n"
             "   [--noreport : bool, skip report log copy for developer]\n"
-            "   [--noupdate : bool, skip software updates self-check]\n"
+            "   [--noupdate : bool, skip software updates auto-check]\n"
     )
 
 
