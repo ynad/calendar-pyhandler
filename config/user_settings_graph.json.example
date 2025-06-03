@@ -1,0 +1,15 @@
+{
+    "mode" : "microsoft_graph",
+    "azure_client_id" : "secret-azure-client-id",
+    "azure_tenant_id" : "secret-azure-tenant-id",
+    "domain" : "cloud.domain.com",
+    "username": "user.name",
+    "calendar" : "personal",
+    "_calendar" : "<calendar-or-group-id>",
+    "_group" : false,
+    "organizer_name" : "User Name",
+    "organizer_role" : "Very Specialist",
+    "organizer_email" : "user.name@domain.com",
+    "_location" : "My Conference Room",
+    "_report" : "/tmp/report"
+}

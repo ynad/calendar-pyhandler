@@ -1,0 +1,13 @@
+{
+    "mode" : "caldav",
+    "domain" : "cloud.domain.com",
+    "server" : "https://cloud.domain.com/remote.php/dav/calendars",
+    "username": "user.name",
+    "password": "super-secret-password",
+    "calendar" : "personal",
+    "organizer_name" : "User Name",
+    "organizer_role" : "Very Specialist",
+    "organizer_email" : "user.name@domain.com",
+    "_location" : "My Conference Room",
+    "_report" : "/tmp/report"
+}
