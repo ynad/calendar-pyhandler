@@ -1,33 +1,40 @@
 #!/usr/bin/python
 
-#
-## calendar-pyCLIent.py
-# Receives event details from arguments, parse them, create an ICS event, upload it via webdav PUT request.
-# Must provide JSON formatted file with: User-Agent, webdav server url, authentication, etc.
-# Based on a NextCloud environment.
-#
-# See README.me for full details.
-#
-## License
-# Released under GPL-3.0 license.
-#
-# 2025.04.04
+# Copyright 2025 Daniele Vercelli - ynad <info@danielevercelli.it>
 # https://github.com/ynad/calendar-pyhandler
-# info@danielevercelli.it
 #
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>
+
+"""
+# calendar-pyCLIent.py
+2025-06-03
+
+CLI client to handle operations on calendars: currenlty supports CalDav (WebDAV) and Microsoft Graph API (Microsoft 365).
+Event details and other options are via command line arguments. See --help for more.
+User settings must be provided in a JSON file. See config examples for CalDav and Graph.
+
+See README.me for full details.
+"""
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-VERSION_NUM = "0.6.0"
+VERSION_NUM = "0.7.1"
 DEV_EMAIL = "info@danielevercelli.it"
+DEV_TAG = "ynad"
+PROD_REPO = "calendar-pyhandler"
 PROD_NAME = "calendar-pyCLIent"
 PROD_URL = "github.com/ynad/calendar-pyhandler"
-update_version_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/VERSION"
-update_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/calendar-pyCLIent-client.py"
-requirements_url = "https://raw.githubusercontent.com/ynad/calendar-pyhandler/main/requirements.txt"
 logging_file = "debug.log"
-requirements_file = "requirements.txt"
-pip_json = "pip.json"
 ics_file = "tmp_calendar-pyhandler-event.ics"
 ###################################################################################################
 
@@ -40,15 +47,18 @@ import logging
 import json
 import click
 import requests
-import urllib.request
 import random
 import signal
+import regex as re
 from datetime import datetime, timedelta
-from pathlib import Path
+import zipfile
+import tempfile
+from packaging import version  # Use packaging.version for semver parsing
+import subprocess
 
 # GUI libs
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, Toplevel
+from tkinter import scrolledtext, messagebox
 
 # internal libs
 from agents.caldavAgent import CaldavAgent
@@ -67,85 +77,64 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # set filenames on local path
-# requirements
-requirements_file=f"{os.path.dirname(__file__)}/{requirements_file}"
-# pip list
-pip_json=f"{os.path.dirname(__file__)}/{pip_json}"
 # ics tmp file
 ics_file=f"{os.path.dirname(__file__)}/{ics_file}"
 
 
 
-def message_box(msg_text: str, msg_type: str = 'info') -> None:
+def message_box(message: str, msg_type: str = 'info') -> None:
     window = tk.Tk()
     window.wm_withdraw()
 
-    if msg_type == 'error':
-        messagebox.showerror(title=f"Error - {string_header(short=True)}", message=msg_text)
-    elif msg_type == 'warning':
-        messagebox.showwarning(title=f"Warning - {string_header(short=True)}", message=msg_text)
+    if msg_type.lower() == 'error':
+        messagebox.showerror(title=f"Error - {string_header(short=True)}", message=message)
+    elif msg_type.lower() == 'warning':
+        messagebox.showwarning(title=f"Warning - {string_header(short=True)}", message=message)
     else:
-        messagebox.showinfo(title=f"Information - {string_header(short=True)}", message=msg_text)
+        messagebox.showinfo(title=f"Information - {string_header(short=True)}", message=message)
 
     window.destroy()
-    return None
 
 
-def confirm_box(output_tk: str, events_list: list) -> None:
+def ask_yes_no_gui(message: str, title: str = 'Info', icon: str = 'info', default: str = 'yes'):
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    result = messagebox.askyesno(title, message, icon=icon, default=default)
+    root.destroy()
+    return result
+
+
+def confirm_events(output_tk: str, events_list: list) -> None:
     # Create main window
     root = tk.Tk()
     root.title(string_header(terminal=False))
-    root.geometry("900x600")
+    root.geometry("700x400")
 
     # Label for instruction or title
-    label = tk.Label(root, text=f"\nThe following event(s) will be created:\n")
-    label.pack(pady=10)
+    label = tk.Label(root, text=f"\nI seguenti eventi saranno creati:\n")
+    label.pack(pady=5)
 
     # ScrolledText widget for displaying the text
-    text = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=70, height=20)
-    text.pack(pady=10)
+    text = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=70, height=16)
+    text.pack(pady=1)
 
-    # Sample text for demonstration (between 15 and 50 lines)
+    # insert output text
     text.insert(tk.END, output_tk)
     text.configure(state='disabled')  # Make the text read-only
 
     # Button frame to organize Confirm and Cancel buttons
     button_frame = tk.Frame(root)
-    button_frame.pack(pady=20)
+    button_frame.pack(pady=10)
 
     # Confirm and Cancel buttons
-    confirm_button = tk.Button(button_frame, text="OK", command=lambda: [create_events(events_list), root.destroy(), root.quit()])
-    cancel_button = tk.Button(button_frame, text="Cancel", command=lambda: [root.destroy(), root.quit()])
+    confirm_button = tk.Button(button_frame, text="     OK     ", command=lambda: [create_events(events_list), root.destroy(), root.quit()])
+    cancel_button = tk.Button(button_frame, text="  Cancel  ", command=lambda: [print('Aborted'), root.destroy(), root.quit()])
 
     confirm_button.pack(side=tk.LEFT, padx=10)
     cancel_button.pack(side=tk.RIGHT, padx=10)
 
     # Run the application
     root.mainloop()
-
-
-# determine user backend mode and create events accordingly
-def create_events(events_list: list) -> bool:
-    logger.info(f"create_events, mode: {user_settings['mode']}")
-
-    # CalDav - WebDav
-    if user_settings['mode'] == 'caldav':
-        agent = CaldavAgent(user_settings, ics_file=ics_file)
-
-    # Microsoft Graph REST API
-    elif user_settings['mode'] == 'microsoft_graph':
-        agent = MGraphAgent(user_settings)
-
-    else:
-        logger.error(f"invalid client mode: {user_settings['mode']}, cannot continue")
-        return False
-
-    for event_n in events_list:
-        res, msg = agent.create_event(event_n)
-        if res:
-            message_box(msg, msg_type='info')
-        else:
-            message_box(msg, msg_type='error')
 
 
 # show command syntax
@@ -169,17 +158,18 @@ def show_syntax() -> str:
             "   [--start_hr HH:MM [HH:MM [...]]]\n"
             "   [--end_hr HH:MM [HH:MM [...]]]\n"
             "   [--loc \"event location\"]\n"
-            "   [--cal \"calendar to be used\". Default: \"personal\"]\n"
-            "   [--invite : email(s) to be invited, separated by space]\n"
+            "   [--cal \"calendar-name-or-ID\". Default: \"personal\"]\n"
+            "   [--group : bool flag to set this as a group calendar. Default: False]\n"
+            "   [--invite \"user1@mail.org user2@mail.net\" : email(s) to be invited, separated by space]\n"
             "\nAlarm settings, all 3 parameters must be set or none is considered:\n"
             "   [--alarm_type : \"DISPLAY\" or \"EMAIL\". Alarm to be set on event. Default: none]\n"
-            "   [--alarm_format : \"h\" = hours, \"d\" = days]\n"
-            "   [--alarm_time : time before the event to set an alarm for, in given format]\n"
+            "   [--alarm_format : \"H\" = hours, \"D\" = days]\n"
+            "   [--alarm_time : time before the event to set an alarm for. Format HH:MM for \"H\", or N > 0 for \"D\"]\n"
             "\nApp behavior settings:\n"
             "   [--config \"path\\to\\config-file.json\". Default: \"user_settings.json\"]\n"
-            "   [--noprompt : skip user confirmation]\n"
-            "   [--noreport : skip report log copy for developer]\n"
-            "   [--noupdate : skip software updates auto-check]\n"
+            "   [--noprompt : bool, skip user confirmation]\n"
+            "   [--noreport : bool, skip report log copy for developer]\n"
+            "   [--noupdate : bool, skip software updates self-check]\n"
     )
 
 
@@ -190,7 +180,13 @@ def load_user_settings(user_config: str) -> dict:
         logger.info("Loading user settings JSON from file: " + str(user_config))
         with open(user_config, 'r') as f:
             user_settings = json.load(f)
-        logger.info(f"Running instance for: {user_settings['domain']}, user: {user_settings['username']}, calendar: {user_settings['calendar'] if 'calendar' in user_settings else 'None'}")
+
+        # assert mandatory settings keys
+        assert 'mode' in user_settings, "invalid user settings, 'mode' key missing"
+        assert 'domain' in user_settings, "invalid user settings, 'domain' key missing"
+        assert 'username' in user_settings, "invalid user settings, 'username' key missing"
+
+        logger.info(f"Running instance for: {user_settings['domain']}, user: {user_settings['username']}, calendar: {user_settings['calendar'] if 'calendar' in user_settings else 'None'}, mode: {user_settings['mode']}")
         return user_settings
     else:
         logger.error(f"User settings JSON missing: {user_config}")
@@ -198,7 +194,7 @@ def load_user_settings(user_config: str) -> dict:
 
 
 # send report of usage to developer
-def send_report() -> None:
+def report_copy(user_settings: dict) -> None:
     # copy log to report dir, if path is provided in user_settings
     if 'report' in user_settings:
         try:
@@ -212,133 +208,144 @@ def send_report() -> None:
         logger.warning(f"No report path in user_settings, cannot send report")
 
 
-def check_dependencies() -> bool:
-    # run dep check only if an update_version is found
-    if update_version:
-
-        # get updated requirements, else use local if exist
-        get_requirements()
-        if os.path.exists(requirements_file):
-            # get os pip package list as json
-            logger.info(f"Save local pip list on file: {pip_json}")
-            try:
-                os.system(f"pip list --disable-pip-version-check --format json > {pip_json}")
-                with open(pip_json, 'r') as fp:
-                    pip_list = json.load(fp)
-                os.remove(pip_json)
-            except Exception as e:
-                logger.error(f"Error reading pip list JSON from file {pip_json}: {e}")
-                print("(!) Error reading software state list.\n")
-                return False
-
-            logger.info(f"Read requirements from file: {requirements_file}")
-            try:
-                with open(requirements_file, 'r') as fp:
-                    requirements = fp.readlines()
-            except Exception as e:
-                logger.error(f"Error reading requirements from file: {requirements_file}")
-                print("(!) Error reading software requirements.\n")
-                return False
-
-            # iterate over package list and search for my requirements    
-            for pack in pip_list:
-                for req in requirements:
-                    if pack['name'] == req.split('\n')[0]:
-                        requirements.remove(req)
-
-            # if there are missing requirements install them
-            if len(requirements) > 0:
-                return install_requirements(requirements)
-            else:
-                logger.info(f"All requirements satisfied")
-                return True
-
-        else:
-            logger.warning(f"Requirements not found on path: {requirements_file}")
-            print("(!) Error checking software requirements.\n")
+def prompt_yes_no(message: str, default: bool = False) -> bool:
+    prompt = " [Y/n]: " if default else " [y/N]: "
+    while True:
+        reply = input(message + prompt).strip().lower()
+        if not reply:
+            return default
+        if reply in ('y', 'yes', 'Y', 'Yes', 'YES'):
+            return True
+        if reply in ('n', 'no', 'N', 'No', 'NO'):
             return False
 
-    else:
-        logger.info("check_dependencies skipped")
 
+def get_latest_release() -> tuple[str, list]:
+    url = f"https://api.github.com/repos/{DEV_TAG}/{PROD_REPO}/releases/latest"
+    response = requests.get(url)
 
-def get_requirements() -> bool:
+    if response.status_code != 200:
+        msg = f"Failed to fetch latest release info: {response.status_code} {response.reason}"
+        logger.warning(msg)
+        print(msg)
+        return msg, None
+
     try:
-        logger.info(f"Get updated requirements from url: {requirements_url}, to file: {requirements_file}")
-        urllib.request.urlretrieve(requirements_url, requirements_file)
-        return True
+        data = response.json()
+    except Exception as exc:
+        msg = f"Exception decoding JSON release info response: {str(exc)}"
+        logger.warning(f"Exception decoding JSON release info response: {repr(exc)}")
+        print(msg)
+        return msg, None
 
-    except Exception as e:
-        logger.warning(f"Error downloading python requirements from url {requirements_url}: {e}")
-        print("(!) Error occurred while downloading software requirements.\n")
+    logger.info(f"Latest release info fetched: {data['tag_name']}, published: {data['published_at']}")
+    return data['tag_name'], data['assets']
+
+
+def is_newer_version(latest_tag: str, current_tag: str) -> bool:
+    try:
+        return version.parse(latest_tag.lstrip('v')) > version.parse(current_tag.lstrip('v'))
+    except Exception as exc:
+        logger.warning(f"Exception checking package version: {repr(exc)}")
         return False
 
 
-def install_requirements(requirements: list) -> bool:
-    print(f"New software dependencies are available:")
-    for req in requirements:
-        req = req.split('\n')[0]
-        print(f"{req} ")
-    print( "\nATTENTION: new python packages will be installed. If skipped, the software might not work after an update.\n"
-           "Do you want to install them now? (Y/N)"
-           )
-    run_update = input()
+def download_zip_asset(assets: list, output_path: str) -> tuple[bool, str]:
+    for asset in assets:
+        if asset['name'].endswith(".zip"):
+            url = asset["browser_download_url"]
 
-    if run_update.upper() == 'Y':
-        logger.info(f"Installing missing requirements from file: {requirements_file}")
-        print(f"Downloading new python pip packages...\n")
-        return os.system(f"pip install --disable-pip-version-check -r {requirements_file}")
+            logger.info(f"Downloading update from {url}...")
+            print(f"Downloading update from {url}...")
+
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                with open(output_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            return True, None
+
+    msg = "No ZIP asset found in release, cannot update"
+    logger.warning(msg)
+    print(msg)
+    return False, msg
+
+
+def unzip_overwrite(zip_path: str, extract_to: str):
+    logger.info(f"Extracting {zip_path} to {extract_to}...")
+    print(f"Extracting {zip_path} to {extract_to}...")
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        for member in zip_ref.namelist():
+            zip_ref.extract(member, extract_to)
+
+
+def update_requirements_if_needed(zip_path: str, temp_extract_dir: str):
+    logger.info("Checking for updated Python requirements...")
+    print("Checking for updated Python requirements...")
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(temp_extract_dir)
+
+    new_reqs_path = os.path.join(temp_extract_dir, "requirements.txt")
+    if not os.path.exists(new_reqs_path):
+        logger.info("No requirements.txt found in update")
+        print("No requirements.txt found in update")
+        return
+
+    #if prompt_yes_no("Do you want to update dependencies? (ATTENTION: if skipped the software might not work after the update)", default=False):
+    if ask_yes_no_gui("Do you want to update software dependencies?\n\nWARNING: Skipping this step may cause the software to stop working after the update", title="Dependencies update", icon='question'):
+        logger.info("Installing updated dependencies...")
+        print("Installing updated dependencies...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "-r", new_reqs_path])
+        except subprocess.CalledProcessError as exc:
+            logger.error(f"Failed to update requirements: {e}")
+            print(f"Failed to update requirements: {e}")
     else:
-        logger.info("Requirements update skipped")
-        print("Requirements update skipped.\n")
-        return False
+        logger.warning("Dependency update skipped")
+        print("Dependency update skipped")
 
 
-# check software updates
-def check_updates() -> tuple[str, str]:
-    # get latest version number
-    response = requests.get(update_version_url)
-    if (response.status_code == 200):
-        update_info = response.text.split('\n')
-
-        # newer version available on repo
-        if (update_info[0]) > (VERSION_NUM):
-        #if version.parse(update_info[0]) > version.parse(VERSION_NUM):
-            logger.info(f"Current version: {VERSION_NUM}, found update: {update_info}")
-            return update_info[0], update_info[1]
-
-        else:
-            logger.info(f"No updates available. Current version: {VERSION_NUM}, online version: {update_info}")
-            return None, None
-
-    else:
-        logger.error(f"{e} {response.status_code}, {response.text}")
-        e = "(!) Error occurred while checking available updates."
-        print(e)
-        message_box(e, msg_type='warning')
-        return None, None
+def restart_app():
+    logger.warning("Restarting app ...")
+    print("Restarting app...")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+    #os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
 
 
-# self update app
-def self_update() -> None:
-    # if a newer version is available on repo
-    if update_version:
-        print(f"A new version is available: {update_version}, {update_date}\n"
-               "After the update you may have to re-launch the program.\n"
-               "Do you want to update now? (Y/N)")
-        run_update = input()
+def check_and_update():
+    latest_tag, assets = get_latest_release()
+    if not assets:
+        message_box(latest_tag, msg_type='warning')
+        return
 
-        if run_update.upper() == 'Y':
-            logger.info("Downloading new version and restarting")
-            print(f"Downloading new version and restarting...")
-            urllib.request.urlretrieve(update_url, __file__)
-            os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
-        else:
-            logger.info("Update skipped")
-            print("Update skipped.")
+    if not is_newer_version(latest_tag, VERSION_NUM):
+        logger.info(f"No update needed. Current version {VERSION_NUM} is up to date")
+        #print(f"No update needed. Current version {VERSION_NUM} is up to date")
+        return
 
-    else:
-        logger.info(f"self_update nothing to do")
+    logger.warning(f"New version {latest_tag} is available (current: {VERSION_NUM})")
+    print(f"New version {latest_tag} is available (current: {VERSION_NUM})")
+    msg = f"New version {latest_tag} is available (current: {VERSION_NUM})\n\nDo you want to download and install it?"
+
+    #if not prompt_yes_no("Do you want to download and install it?", default=True):
+    if not ask_yes_no_gui(msg, title="Software update", icon='info'):
+        logger.warning("Update canceled by user")
+        print("Update canceled by user\n")
+        return
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "update.zip")
+        res, msg = download_zip_asset(assets, zip_path)
+        if not res:
+            message_box(msg, msg_type='warning')
+            return
+
+        update_requirements_if_needed(zip_path, os.path.join(tmpdir, "extracted"))
+        unzip_overwrite(zip_path, os.path.dirname(os.path.abspath(__file__)))
+
+    restart_app()
 
 
 # check string date format
@@ -429,6 +436,40 @@ def args_check(start_day: str, end_day: str, start_hr: str, end_hr: str) -> tupl
     return True, ""
 
 
+# determine user backend mode and create events accordingly
+def create_events(events_list: list) -> None:
+    try:
+        logger.info(f"create_events, mode: {user_settings['mode']}")
+
+        # CalDav - WebDav
+        if user_settings['mode'] == 'caldav':
+            agent = CaldavAgent(user_settings, ics_file=ics_file)
+
+        # Microsoft Graph REST API
+        elif user_settings['mode'] == 'microsoft_graph':
+            agent = MGraphAgent(user_settings)
+
+        else:
+            msg = f"Invalid client mode: {user_settings['mode']}, cannot continue"
+            logger.error(msg)
+            message_box(msg, msg_type='error')
+            raise RuntimeError(f"Not implemented client mode: {user_settings['mode']}")
+
+        for event_n in events_list:
+            res, msg = agent.create_event(event_n)
+            if res:
+                message_box(msg, msg_type='info')
+            else:
+                message_box(msg, msg_type='error')
+
+    except Exception as exc:
+        logger.error(f"Exception on create_events: {repr(exc)}")
+        print(f"Exception on create_events: {repr(exc)}")
+
+        # show an error message
+        message_box(f"Exception on create_events: {str(exc)}", msg_type='error')
+
+
 
 @click.command()
 @click.option(
@@ -482,7 +523,7 @@ def args_check(start_day: str, end_day: str, start_hr: str, end_hr: str) -> tupl
 @click.option(
     "--cal",
     type=str,
-    default="personal",
+    default="",
     help='"calendar-to-use". Default: "personal"'
 )
 @click.option(
@@ -535,8 +576,6 @@ def args_check(start_day: str, end_day: str, start_hr: str, end_hr: str) -> tupl
 def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, group, invite, alarm_type, alarm_format, alarm_time, noprompt, noreport, noupdate):
 
     global user_settings
-    global update_version
-    global update_date
 
     # load user settings from json file
     user_settings = load_user_settings(config)
@@ -545,21 +584,16 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
         logger.error(err)
         print(err)
         message_box(err, msg_type='error')
-        input("Cannot continue. Press enter to exit.")
-        return
+        #input("Cannot continue. Press enter to exit.")
+        #return 10
+        sys.exit(10)
 
     # print software header
     print(f"\n{string_header(terminal=True)}")
 
-
     # check software updates
     if not noupdate:
-        update_version, update_date = check_updates()
-
-        # check dependecies update
-        check_dependencies()
-        # run self update
-        self_update()
+        check_and_update()
 
 
     # check command line arguments
@@ -569,8 +603,9 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
         print(f"Error: {err}\n")
         print(show_syntax())
         message_box(err, msg_type='warning')
-        input("Press enter to exit.")
-        return
+        #input("Press enter to exit.")
+        #return 20
+        sys.exit(20)
 
 
     # if more than one start & end days/hours are provided, split them and repeat all procedure for each one
@@ -582,10 +617,18 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
         end_hr_list = end_hr.split()
 
     # if a calendar is given via command line option overrides user settings, if any
-    if not cal and 'calendar' in user_settings and user_settings['calendar']:
+    if not cal and 'calendar' in user_settings and len(user_settings['calendar']) > 1:
         cal = user_settings['calendar']
+        logger.info(f"Calendar set: {cal}")
     elif not cal:
         cal = 'personal'
+        logger.info(f"Calendar default: {cal}")
+    
+
+    # set as group calendar if in user settings
+    if not group and 'group' in user_settings and user_settings['group'] == True:
+        group = True
+    # else 'group' stays as set by cmd line option
 
     # if a location is given via command line option overrides user settings, if any
     if not loc and 'location' in user_settings and user_settings['location']:
@@ -640,10 +683,38 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
             alarm_type = alarm_type.upper()
             alarm_format = alarm_format.upper()
             if ( alarm_type == 'DISPLAY' or alarm_type == 'EMAIL') and ( alarm_format == 'H' or alarm_format == 'D' ):
+                
+                # check HH:MM format
+                if alarm_format == 'H':
+                    pattern_hour = r'^([0-9]|1[0-9]|2[0-3]):([0-9]|[0-5][0-9])$'
+                    if not re.match(pattern_hour, alarm_time):
+                        msg = f"Invalid time for alarm_format 'H': 'HH:MM'"
+                        logger.warning(msg)
+                        message_box(msg, msg_type='warning')
+                        raise ValueError(msg)
+
+                # check positive integer for days format
+                elif alarm_format == 'D':
+                    try:
+                        alarm_time = int(alarm_time)
+                        assert alarm_time > 0
+
+                    except Exception as exc:
+                        msg = f"Invalid time for alarm_format 'D': Integer > 0"
+                        logger.warning(msg)
+                        message_box(msg, msg_type='warning')
+                        raise ValueError(msg)
+
                 event_details.update( { 'alarm_type' : alarm_type } )
                 event_details.update( { 'alarm_format' : alarm_format } )
                 event_details.update( { 'alarm_time' : alarm_time } )
                 logger.info(f"Alarm requested: {alarm_type}, {alarm_format}, {alarm_time}")
+
+            else:
+                msg = f"Invalid alarm parameters:\n\n'alarm_type': 'DISPLAY' or 'EMAIL'\n'alarm_format': 'D' or 'H'"
+                logger.warning(msg)
+                message_box(msg, msg_type='warning')
+                raise ValueError(msg)
 
         # append event to list
         events_list.append(event_details)
@@ -652,23 +723,23 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
     # print events summary
     logger.info(f"print events summary")
     output_tk = ''
-    print(f"\nThe following {len(start_day_list)} event(s) will be added:\n")
+    print(f"\nI seguenti ({len(start_day_list)}) eventi saranno creati:\n")
 
     # cycle over events list
     for j, event_n in enumerate(events_list):
 
-        string_output = (f"Event {j+1}/{len(start_day_list)}\n"
+        string_output = (f"Evento {j+1}/{len(start_day_list)}\n"
               f"-----------\n"
-              f"NAME:           {event_n['name']}\n"
-              f"DESCRIPTION:    {event_n['description']}\n"
-              f"\nSTART DATE:     {datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"END DATE:       {datetime.strftime(event_n['end'], '%d/%m/%Y %H:%M:%S')}\n"
-              f"LOCATION:       {event_n['location'] if 'location' in event_n else 'None'}\n"
-              f"CALENDAR:       {event_n['calendar']}")
+              f"NOME:           {event_n['name']}\n"
+              f"DESCRIZIONE:    {event_n['description']}\n\n"
+              f"DATA INIZIO:    {datetime.strftime(event_n['start'], '%d/%m/%Y %H:%M:%S')}\n"
+              f"DATA FINE:      {datetime.strftime(event_n['end'], '%d/%m/%Y %H:%M:%S')}\n"
+              f"LUOGO:          {event_n['location'] if 'location' in event_n else 'None'}\n"
+              f"CALENDARIO:     {event_n['calendar']}")
         if invite:
-            string_output += f"INVITEE:        {event_n['invite']}"
+            string_output += f"\nINVITATI:       {event_n['invite']}"
         if 'alarm_type' in event_n:
-            string_output += f"ALARM:          {event_n['alarm_type']}, {event_n['alarm_time']}{event_n['alarm_format']} before"
+            string_output += f"\nREMINDER:       {event_n['alarm_type']}, {event_n['alarm_time']}{event_n['alarm_format']} prima"
         string_output += "\n----------------------------------------------\n"
 
         # append and print
@@ -681,14 +752,18 @@ def main(config, name, descr, start_day, start_hr, end_day, end_hr, loc, cal, gr
         create_events(events_list)
     else:
         logger.info(f"Wait for user prompt to proceed")
-        confirm_box(output_tk, events_list)
-        #input("Press enter to confirm.")
+        confirm_events(output_tk, events_list)
+        #input("Press enter to confirm")
 
 
     # send log report
     if not noreport:
-        send_report()
+        report_copy(user_settings)
+
+    # return success
+    return 0
 
 
 if __name__ == '__main__':
     main()
+
