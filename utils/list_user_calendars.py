@@ -44,11 +44,11 @@ def get_access_token() -> str:
         # If no valid token, ask the user to log in interactively
         result = graph_app.acquire_token_interactive(ms_scopes)
 
-    # Save updated token cache
-    with open(cache_file, "w") as fp:
-        fp.write(cache.serialize())
-
     if "access_token" in result:
+        # Save updated token cache
+        with open(cache_file, "w") as fp:
+            fp.write(cache.serialize())
+
         return result["access_token"]
 
     else:
