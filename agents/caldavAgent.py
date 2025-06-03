@@ -1,40 +1,50 @@
 #!/usr/bin/python
 
-#
-## caldavAgent.py
-# Class to handle CalDav (WebDAV) requests.
-# ICS file and User-Agent may be overridden via properties.
-# Current capabilities: 
-#   * Events creation: Writes an ICS file with event details and send PUT request
-#
-# 'user_settings' dict format:
-#        {
-#            "mode" : "caldav",
-#            "domain" : "cloud.domain.com",
-#            "server" : "https://cloud.domain.com/remote.php/dav/calendars",
-#            "username": "jane.doe",
-#            "password": "secret-app-password",
-#            "calendar" : "personal",
-#            "organizer_name" : "Jane Doe",
-#            "organizer_role" : "IT",
-#            "organizer_email" : "info@example.com",
-#            "location" : "Main Office",
-#            "report" : "path/to/reports-folder"
-#        }
-#
-# See README.me for full details.
-#
-## License
-# Released under GPL-3.0 license.
-#
-# 2025.04.04
+# Copyright 2025 Daniele Vercelli - ynad <info@danielevercelli.it>
 # https://github.com/ynad/calendar-pyhandler
-# info@danielevercelli.it
 #
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>
+
+"""
+# caldavAgent.py
+2025-05-28
+
+Class to handle CalDav (WebDAV) requests. Based on a NextCloud environment.
+ICS file and User-Agent may be overridden via properties.
+Current capabilities: 
+  * Events creation: Writes an ICS file with event details and send PUT request
+
+'user_settings' dict format:
+       {
+           "mode" : "caldav",
+           "domain" : "cloud.domain.com",
+           "server" : "https://cloud.domain.com/remote.php/dav/calendars",
+           "username": "jane.doe",
+           "password": "secret-app-password",
+           "calendar" : "personal",
+           "organizer_name" : "Jane Doe",
+           "organizer_role" : "IT",
+           "organizer_email" : "info@example.com",
+           "location" : "Main Office",
+           "report" : "path/to/reports-folder"
+       }
+
+See README.me for full details.
+"""
 
 ###################################################################################################
 # APP SETTINGS - DO NOT EDIT
-VERSION_NUM = "0.6.0"
+VERSION_NUM = "0.7.1"
 DEV_EMAIL = "info@danielevercelli.it"
 PROD_NAME = "CalDav-pyAgent"
 PROD_URL = "github.com/ynad/calendar-pyhandler"
@@ -45,7 +55,7 @@ PROD_URL = "github.com/ynad/calendar-pyhandler"
 import os
 import logging
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from icalendar import Calendar, Event, Alarm, vCalAddress, vText
 from requests.auth import HTTPBasicAuth
 
@@ -64,6 +74,10 @@ class CaldavAgent():
                 user_agent: str = None,
         ):
         logger.info("init CaldavAgent")
+
+        # check user settings
+        assert 'server' in user_settings and 'password' in user_settings, 'incomplete CalDav server settings, some keys are missing'
+        assert 'organizer_name' in user_settings and 'organizer_role' in user_settings and 'organizer_email' in user_settings, 'incomplete CalDav user settings, some keys are missing'
 
         self.__user_settings = user_settings
         self.ics_file = ics_file
@@ -109,7 +123,8 @@ class CaldavAgent():
             myevent['location'] = vText(event_details['location'])
 
         # creation time
-        create_time = datetime.strptime(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "%d/%m/%Y %H:%M:%S")
+        #create_time = datetime.strptime(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "%d/%m/%Y %H:%M:%S")
+        create_time = datetime.now()
         logger.info(f"ICS: created time: {create_time}")
         myevent.add('created', create_time)
         
@@ -156,7 +171,7 @@ class CaldavAgent():
 
             # set trigger time
             #myalarm.add("trigger", timedelta(days=-reminder_days))
-            if event_details['fullday'] is True:
+            if event_details['fullday']:
                 logger.info(f"ICS: fullday event")
                 myalarm.add("TRIGGER;RELATED=START", f"-P{event_details['alarm_time']}{event_details['alarm_format']}")
             else:
